@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SF Pilot",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Premium Salesforce navigation toolbar. Made with ❤️ by Abhishek Jaiswal.",
   "permissions": [
     "scripting",
@@ -15,7 +15,11 @@
     "https://*.sandbox.lightning.force.com/*",
     "https://*.sandbox.my.salesforce.com/*",
     "https://*.develop.lightning.force.com/*",
-    "https://*.develop.my.salesforce.com/*"
+    "https://*.develop.my.salesforce.com/*",
+    "https://*.salesforce-setup.com/*",
+    "https://*.my.salesforce-setup.com/*",
+    "https://*.sandbox.my.salesforce-setup.com/*",
+    "https://*.develop.my.salesforce-setup.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -30,7 +34,11 @@
         "https://*.sandbox.lightning.force.com/*",
         "https://*.sandbox.my.salesforce.com/*",
         "https://*.develop.lightning.force.com/*",
-        "https://*.develop.my.salesforce.com/*"
+        "https://*.develop.my.salesforce.com/*",
+        "https://*.salesforce-setup.com/*",
+        "https://*.my.salesforce-setup.com/*",
+        "https://*.sandbox.my.salesforce-setup.com/*",
+        "https://*.develop.my.salesforce-setup.com/*"
       ],
       "js": [
         "content.js"

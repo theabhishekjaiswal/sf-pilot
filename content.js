@@ -75,14 +75,23 @@
 
   function getClassicBase() {
     const { protocol, hostname } = window.location;
-    const h = hostname.replace(/\.lightning\.force\.com$/, '.my.salesforce.com');
+    let h = hostname;
+    if (h.includes('.lightning.force.com')) {
+      h = h.replace(/\.lightning\.force\.com$/, '.my.salesforce.com');
+    } else if (h.includes('.salesforce-setup.com')) {
+      h = h.replace(/\.salesforce-setup\.com$/, '.salesforce.com');
+    }
     return `${protocol}//${h}`;
   }
 
   function getLightningBase() {
     const { protocol, hostname } = window.location;
     if (hostname.includes('.lightning.force.com')) return `${protocol}//${hostname}`;
-    const h = hostname.replace(/\.my\.salesforce\.com$/, '.lightning.force.com');
+    let h = hostname;
+    if (h.includes('.salesforce-setup.com')) {
+      h = h.replace(/\.salesforce-setup\.com$/, '.salesforce.com');
+    }
+    h = h.replace(/\.my\.salesforce\.com$/, '.lightning.force.com');
     return `${protocol}//${h}`;
   }
 
@@ -129,7 +138,7 @@
     const onLEX = isOnLightningDomain();
 
     // 1. Lightning record:  /lightning/r/{ObjectApiName}/{RecordId}/...
-    const lexMatch = pathname.match(/\/lightning\/r\/([^/]+)\/([a-zA-Z0-9]{15,18})\//);
+    const lexMatch = pathname.match(/\/lightning\/r\/([^/]+)\/([a-zA-Z0-9]{15,18})(?:\/|$)/);
     if (lexMatch) {
       return {
         objectType: lexMatch[1],
@@ -237,6 +246,14 @@
       return `${getLightningBase()}/one/one.app#/sObject/${id}/view`;
     }
     return `${getClassicBase()}/${id}`;
+  }
+
+  function openClassicUrl(targetUrl) {
+    window.open(targetUrl, '_blank');
+  }
+
+  function openLightningUrl(targetUrl) {
+    window.open(targetUrl, '_blank');
   }
 
   // ─── Application data fetcher ─────────────────────────────────────────────
@@ -351,7 +368,7 @@
       variant: 'classic',
       active: false,
       disabled: !onLEX,
-      onClick: () => window.open(switchToClassicUrl(page), '_blank'),
+      onClick: () => openClassicUrl(switchToClassicUrl(page)),
     }));
 
     // Lightning button
@@ -363,7 +380,7 @@
       variant: 'lightning',
       active: false,
       disabled: onLEX,
-      onClick: () => window.open(switchToLightningUrl(page), '_blank'),
+      onClick: () => openLightningUrl(switchToLightningUrl(page)),
     }));
 
     // ── Application-specific section ─────────────────────────────────────────
@@ -385,11 +402,11 @@
         id: 'account',
         icon: ICONS.account,
         label: 'Account',
-        tooltip: `Open related Account in ${onLEX ? 'Lightning' : 'Classic'}`,
+        tooltip: 'Open related Account in Classic',
         variant: 'account',
         onClick: () => {
-          const url = relatedRecordUrl(appData && appData.accountId, onLEX, 'Account');
-          if (url) window.open(url, '_blank');
+          const url = relatedRecordUrl(appData && appData.accountId, false, 'Account');
+          if (url) openClassicUrl(url);
         },
       });
       toolbar.appendChild(accountBtn);
@@ -399,11 +416,11 @@
         id: 'contact',
         icon: ICONS.contact,
         label: 'Contact',
-        tooltip: `Open related Contact in ${onLEX ? 'Lightning' : 'Classic'}`,
+        tooltip: 'Open related Contact in Classic',
         variant: 'contact',
         onClick: () => {
-          const url = relatedRecordUrl(appData && appData.contactId, onLEX, 'Contact');
-          if (url) window.open(url, '_blank');
+          const url = relatedRecordUrl(appData && appData.contactId, false, 'Contact');
+          if (url) openClassicUrl(url);
         },
       });
       toolbar.appendChild(contactBtn);
@@ -413,11 +430,11 @@
         id: 'party',
         icon: ICONS.party,
         label: 'Party',
-        tooltip: `Open related Party in ${onLEX ? 'Lightning' : 'Classic'}`,
+        tooltip: 'Open related Party in Classic',
         variant: 'party',
         onClick: () => {
-          const url = relatedRecordUrl(appData && appData.partyId, onLEX, PARTY_OBJECT);
-          if (url) window.open(url, '_blank');
+          const url = relatedRecordUrl(appData && appData.partyId, false, PARTY_OBJECT);
+          if (url) openClassicUrl(url);
         },
       });
       toolbar.appendChild(partyBtn);
@@ -433,12 +450,12 @@
         variant: 'openall',
         onClick: () => {
           window.open(noOverrideUrl(), '_blank');
-          const acc = relatedRecordUrl(appData && appData.accountId, onLEX, 'Account');
-          const con = relatedRecordUrl(appData && appData.contactId, onLEX, 'Contact');
-          const pty = relatedRecordUrl(appData && appData.partyId, onLEX, PARTY_OBJECT);
-          if (acc) window.open(acc, '_blank');
-          if (con) window.open(con, '_blank');
-          if (pty) window.open(pty, '_blank');
+          const acc = relatedRecordUrl(appData && appData.accountId, false, 'Account');
+          const con = relatedRecordUrl(appData && appData.contactId, false, 'Contact');
+          const pty = relatedRecordUrl(appData && appData.partyId, false, PARTY_OBJECT);
+          if (acc) openClassicUrl(acc);
+          if (con) openClassicUrl(con);
+          if (pty) openClassicUrl(pty);
         },
       });
       toolbar.appendChild(openAllBtn);
@@ -783,7 +800,7 @@
 
     // Handle static shortcuts — open dynamic URL on the current org's Classic domain
     if (obj && obj.type === 'Shortcut') {
-      window.open(getClassicBase() + obj.setupId, '_blank');
+      openClassicUrl(getClassicBase() + obj.setupId);
       return;
     }
 
@@ -835,7 +852,7 @@
     }
 
     const url = `${getClassicBase()}/${destination}`;
-    window.open(url, '_blank');
+    openClassicUrl(url);
   }
 
   function escapeHtml(str) {
@@ -964,6 +981,11 @@
   }
 
   const domObserver = new MutationObserver(() => {
+    if (location.href !== lastUrl) {
+      onUrlChange();
+      return;
+    }
+
     if (isNavigating) return; // Ignore mutations during navigation to prevent race loops
 
     if (document.getElementById(SIDE_BTN_ID) && document.getElementById(MODAL_ID)) {
@@ -981,6 +1003,14 @@
   });
 
   domObserver.observe(document.documentElement, { childList: true });
+
+  // ─── Periodic URL check ───────────────────────────────────────────────────
+
+  setInterval(() => {
+    if (location.href !== lastUrl) {
+      onUrlChange();
+    }
+  }, 250);
 
   // ─── Boot ─────────────────────────────────────────────────────────────────
 

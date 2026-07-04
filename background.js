@@ -35,6 +35,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .catch((err) => sendResponse({ ok: false, error: err.message }));
     return true;
   }
+  if (msg.type === 'sfGetSid') {
+    handleGetSid(msg, sender)
+      .then((sid) => sendResponse({ ok: true, sid }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
 });
 
 // ─── sObjects list handler ───────────────────────────────────────────────────
@@ -234,6 +240,13 @@ async function handleGetObjects(msg, sender) {
   return [];
 }
 
+async function handleGetSid(msg, sender) {
+  const tabUrl = sender.tab && sender.tab.url ? new URL(sender.tab.url) : null;
+  const rawBase = tabUrl ? `${tabUrl.protocol}//${tabUrl.hostname}` : (msg.baseUrl || '');
+  const apiBase = toClassicBase(rawBase);
+  return await getSid(apiBase);
+}
+
 // ─── Domain normalization ─────────────────────────────────────────────────────
 
 /**
@@ -246,7 +259,12 @@ async function handleGetObjects(msg, sender) {
  */
 function toClassicBase(urlOrString) {
   const u = typeof urlOrString === 'string' ? new URL(urlOrString) : urlOrString;
-  const hostname = u.hostname.replace(/\.lightning\.force\.com$/, '.my.salesforce.com');
+  let hostname = u.hostname;
+  if (hostname.includes('.lightning.force.com')) {
+    hostname = hostname.replace(/\.lightning\.force\.com$/, '.my.salesforce.com');
+  } else if (hostname.includes('.salesforce-setup.com')) {
+    hostname = hostname.replace(/\.salesforce-setup\.com$/, '.salesforce.com');
+  }
   return `${u.protocol}//${hostname}`;
 }
 
@@ -297,7 +315,13 @@ async function handleRequest(msg, sender) {
  */
 async function getSid(baseUrl) {
   try {
-    const cookie = await chrome.cookies.get({ url: baseUrl, name: 'sid' });
+    // 1. Try to get sid from Classic base
+    let cookie = await chrome.cookies.get({ url: baseUrl, name: 'sid' });
+    if (cookie && cookie.value) return cookie.value;
+
+    // 2. Try to get sid from Lightning base (fallback)
+    const lightningBase = baseUrl.replace(/\.my\.salesforce\.com$/, '.lightning.force.com');
+    cookie = await chrome.cookies.get({ url: lightningBase, name: 'sid' });
     if (cookie && cookie.value) return cookie.value;
   } catch { }
   return null;
