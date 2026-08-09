@@ -38,6 +38,10 @@
   const TOOLBAR_ID = 'sf-navigator-root';
   const SF_ID_RE = /^[a-zA-Z0-9]{15,18}$/;
 
+  // Per-page-load hide flag — reset to false on every full page refresh
+  // (module-level variables reset when content script re-executes on refresh)
+  let toolbarHiddenThisLoad = false;
+
   // ─── Key prefix → object type (for Classic record IDs) ───────────────────
 
   const KEY_PREFIX = {
@@ -291,6 +295,7 @@
   // ─── SVG Icons ────────────────────────────────────────────────────────────
 
   const ICONS = {
+    refresh: `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21v-5h5"/></svg>`,
     classic: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>`,
     lightning: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
     nooverride: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>`,
@@ -300,6 +305,8 @@
     openall: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>`,
     logo: `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 512 512" fill="none" stroke="white" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"><path d="M 180,380 C 230,380 280,380 330,380 C 375,380 410,350 410,310 C 410,270 385,215 360,190 C 335,165 295,150 256,150 C 217,150 177,165 150,190 C 125,215 100,270 100,310 C 100,350 135,380 180,380 Z" fill="none" /><path d="M 232,250 C 190,250 180,270 180,285 C 180,300 225,295 225,310 C 225,325 210,335 180,335" fill="none" stroke-width="22" /><path d="M 270,245 Q 263,290 255,335 M 270,247 L 320,247 M 264,290 L 300,290" fill="none" stroke-width="22" /><line x1="140" y1="380" x2="385" y2="155" stroke-width="26" /><polygon points="385,155 315,165 375,225" fill="white" stroke="none" /></svg>`,
     spinner: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>`,
+    hide: `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+    gear: `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
   };
 
   // ─── DOM utilities ────────────────────────────────────────────────────────
@@ -491,6 +498,19 @@
       }
     }
 
+    // Hide button (×) — hides toolbar for this page load only (resets on refresh)
+    const hideBtn = document.createElement('button');
+    hideBtn.id = 'sfn-btn-hide';
+    hideBtn.className = 'sfn-hide-btn';
+    hideBtn.setAttribute('data-tooltip', 'Hide toolbar (reappears on refresh)');
+    hideBtn.innerHTML = ICONS.hide;
+    hideBtn.addEventListener('click', () => {
+      toolbarHiddenThisLoad = true;  // resets to false when page is refreshed
+      const el = document.getElementById(TOOLBAR_ID);
+      if (el) el.remove();
+    });
+    toolbar.appendChild(hideBtn);
+
     root.appendChild(toolbar);
     return root;
   }
@@ -594,6 +614,18 @@
       type: 'Shortcut',
       setupId: '/apexpages/setup/listStaticResource.apexp?retURL=%2Fui%2Fsetup%2FSetup%3Fsetupid%3DDevToolsIntegrate&setupid=StaticResources'
     },
+    {
+      label: 'Flows',
+      name: '__shortcut_flows',
+      type: 'Shortcut',
+      setupId: '/300?setupid=InteractionProcesses&retURL=%2Fui%2Fsetup%2FSetup%3Fsetupid%3DWorkflow'
+    },
+    {
+      label: 'Platform Events',
+      name: '__shortcut_platform_events',
+      type: 'Shortcut',
+      setupId: '/p/setup/custent/EventObjectsPage?setupid=EventObjects&retURL=%2Fui%2Fsetup%2FSetup%3Fsetupid%3DDevToolsIntegrate'
+    },
   ];
 
   let objectsList = [];
@@ -627,8 +659,23 @@
           <input type="text" class="sfp-search-input" placeholder="Search anything..." autocomplete="off">
         </div>
         <div class="sfp-results-list"></div>
+        <div class="sfp-settings-panel" id="sfp-settings-panel" style="display:none;">
+          <div class="sfp-settings-row">
+            <span class="sfp-settings-label">Show Navigation Bar</span>
+            <label class="sfp-toggle">
+              <input type="checkbox" id="sfp-toggle-navbar" checked>
+              <span class="sfp-toggle-slider"></span>
+            </label>
+          </div>
+        </div>
         <div class="sfp-search-footer">
-          SF Pilot <span class="sfp-heart">♥</span> Made with love by <a href="https://www.linkedin.com/in/theabhishekjaiswal12/" target="_blank" class="sfp-author">Abhishek Jaiswal</a>
+          <div class="sfp-footer-brand">
+            SF Pilot <span class="sfp-heart">♥</span> Made with love by <a href="https://www.linkedin.com/in/theabhishekjaiswal12/" target="_blank" class="sfp-author">Abhishek Jaiswal</a>
+          </div>
+          <div class="sfp-footer-actions">
+            <button class="sfp-action-btn" id="sfp-refresh-btn" title="Refresh Metadata Cache">${ICONS.refresh}<span class="sfp-gear-label">Refresh</span></button>
+            <button class="sfp-action-btn" id="sfp-gear-btn" title="Global Settings">${ICONS.gear}<span class="sfp-gear-label">Settings</span></button>
+          </div>
         </div>
       </div>
     `;
@@ -641,6 +688,82 @@
     input.addEventListener('input', handleSearchInput);
     input.addEventListener('keydown', handleSearchKeydown);
 
+    // Settings gear toggle
+    const gearBtn = modal.querySelector('#sfp-gear-btn');
+    const refreshBtn = modal.querySelector('#sfp-refresh-btn');
+    const settingsPanel = modal.querySelector('#sfp-settings-panel');
+    const navbarToggle = modal.querySelector('#sfp-toggle-navbar');
+
+    // Auto-close settings panel when clicking anywhere outside it
+    modal.querySelector('.sfp-search-panel').addEventListener('click', (e) => {
+      if (settingsPanel.style.display !== 'none') {
+        const clickedInsideSettings = settingsPanel.contains(e.target);
+        const clickedGear = gearBtn === e.target || gearBtn.contains(e.target);
+        if (!clickedInsideSettings && !clickedGear) {
+          settingsPanel.style.display = 'none';
+        }
+      }
+    });
+
+    gearBtn.addEventListener('click', async () => {
+      const isOpen = settingsPanel.style.display !== 'none';
+      if (isOpen) {
+        settingsPanel.style.display = 'none';
+      } else {
+        // Read current value before showing
+        const stored = await chrome.storage.local.get(['sfn_toolbar_enabled']);
+        navbarToggle.checked = stored.sfn_toolbar_enabled !== false;
+        settingsPanel.style.display = 'block';
+      }
+    });
+
+    refreshBtn.addEventListener('click', async () => {
+      if (refreshBtn.disabled) return;
+      refreshBtn.disabled = true;
+      const originalHtml = refreshBtn.innerHTML;
+      refreshBtn.innerHTML = `${ICONS.spinner}<span class="sfp-gear-label">Refreshing...</span>`;
+
+      // Show loading indicator in the main view while fetching
+      renderLoading('Refreshing metadata from Salesforce');
+
+      try {
+        const list = await getObjectsList(true);
+        objectsList = [...SHORTCUTS, ...list];
+        // Re-filter using current input
+        const inputEl = modal.querySelector('.sfp-search-input');
+        if (inputEl) {
+          handleSearchInput({ target: inputEl });
+        }
+      } catch (e) {
+        if (e.message && e.message.includes('Extension context invalidated')) {
+          renderError('Extension was updated. Auto-reloading page to reconnect...');
+          setTimeout(() => window.location.reload(), 1500);
+          return;
+        }
+        renderError('Refresh failed: ' + e.message);
+      } finally {
+        refreshBtn.innerHTML = originalHtml;
+        refreshBtn.disabled = false;
+      }
+    });
+
+    navbarToggle.addEventListener('change', async () => {
+      await chrome.storage.local.set({ sfn_toolbar_enabled: navbarToggle.checked });
+      if (!navbarToggle.checked) {
+        // Remove toolbar immediately
+        const el = document.getElementById(TOOLBAR_ID);
+        if (el) el.remove();
+      } else {
+        // Reinject toolbar — also clear the session hide so it actually shows
+        toolbarHiddenThisLoad = false;
+        if (!document.getElementById(TOOLBAR_ID)) {
+          init();
+        }
+      }
+      // Auto-close settings panel after toggle so user sees the change take effect
+      setTimeout(() => { settingsPanel.style.display = 'none'; }, 600);
+    });
+
     document.documentElement.appendChild(modal);
   }
 
@@ -648,6 +771,10 @@
     const modal = document.getElementById(MODAL_ID);
     if (!modal) return;
     modal.classList.add('sfp-modal--open');
+
+    // Always reset settings panel to hidden when modal opens
+    const sp = modal.querySelector('#sfp-settings-panel');
+    if (sp) sp.style.display = 'none';
 
     const input = modal.querySelector('.sfp-search-input');
     input.value = '';
@@ -675,12 +802,16 @@
 
   function closeSearchModal() {
     const modal = document.getElementById(MODAL_ID);
-    if (modal) modal.classList.remove('sfp-modal--open');
+    if (!modal) return;
+    modal.classList.remove('sfp-modal--open');
+    // Reset settings panel when modal closes
+    const sp = modal.querySelector('#sfp-settings-panel');
+    if (sp) sp.style.display = 'none';
   }
 
-  function getObjectsList() {
+  function getObjectsList(forceRefresh = false) {
     return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage({ type: 'sfGetObjects', baseUrl: getApiBaseUrl() }, (resp) => {
+      chrome.runtime.sendMessage({ type: 'sfGetObjects', baseUrl: getApiBaseUrl(), forceRefresh }, (resp) => {
         if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
         if (resp && resp.ok) return resolve(resp.data || []);
         reject(new Error((resp && resp.error) || 'Unknown error'));
@@ -739,20 +870,30 @@
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (activeIndex >= 0 && activeIndex < items.length) {
-        openObjectInClassic(items[activeIndex].getAttribute('data-name'));
+        openObjectInClassic(items[activeIndex].getAttribute('data-name'), items[activeIndex].getAttribute('data-type'));
       } else if (items.length > 0) {
-        openObjectInClassic(items[0].getAttribute('data-name'));
+        openObjectInClassic(items[0].getAttribute('data-name'), items[0].getAttribute('data-type'));
       }
     }
   }
 
-  function renderLoading() {
+  function renderLoading(msg = 'Loading sObjects from metadata...') {
     const listDiv = document.querySelector(`#${MODAL_ID} .sfp-results-list`);
     if (!listDiv) return;
     listDiv.innerHTML = `
       <div class="sfp-info-text">
         <span class="sfp-spinner-mini">${ICONS.spinner}</span>
-        <span>Loading sObjects from metadata...</span>
+        <span>${escapeHtml(msg)}</span>
+      </div>
+    `;
+  }
+
+  function renderError(msg) {
+    const listDiv = document.querySelector(`#${MODAL_ID} .sfp-results-list`);
+    if (!listDiv) return;
+    listDiv.innerHTML = `
+      <div class="sfp-info-text" style="color: #ea4335;">
+        <span>Error: ${escapeHtml(msg)}</span>
       </div>
     `;
   }
@@ -777,7 +918,7 @@
       .map((o, idx) => {
         const tagClass = `sfp-tag--${o.type.toLowerCase()}`;
         return `
-          <div class="sfp-result-item" data-index="${idx}" data-name="${o.name}">
+          <div class="sfp-result-item" data-index="${idx}" data-name="${o.name}" data-type="${o.type}">
             <div class="sfp-item-left">
               <span class="sfp-item-label">${escapeHtml(o.label)}</span>
               <span class="sfp-item-name">${escapeHtml(o.name)}</span>
@@ -789,18 +930,62 @@
 
     listDiv.querySelectorAll('.sfp-result-item').forEach(item => {
       item.addEventListener('click', () => {
-        openObjectInClassic(item.getAttribute('data-name'));
+        openObjectInClassic(item.getAttribute('data-name'), item.getAttribute('data-type'));
       });
     });
   }
 
-  function openObjectInClassic(objectName) {
+  function openObjectInClassic(objectName, objectType) {
     closeSearchModal();
-    const obj = objectsList.find(o => o.name === objectName);
+    const obj = objectsList.find(o => o.name === objectName && o.type === objectType);
 
-    // Handle static shortcuts — open dynamic URL on the current org's Classic domain
+    // Handle static shortcuts
     if (obj && obj.type === 'Shortcut') {
-      openClassicUrl(getClassicBase() + obj.setupId);
+      if (obj.lightningPath) {
+        // Some shortcuts have no Classic equivalent — open in Lightning
+        window.open(getLightningBase() + obj.lightningPath, '_blank');
+      } else {
+        openClassicUrl(getClassicBase() + obj.setupId);
+      }
+      return;
+    }
+
+    // Handle Flows — open in Classic using FlowDefinition ID (e.g. /300dM...)
+    if (obj && obj.type === 'Flow') {
+      const url = `${getClassicBase()}/${obj.setupId}`;
+      openClassicUrl(url);
+      return;
+    }
+
+    // Handle Tabs — open Record List view in Classic
+    if (obj && obj.type === 'Tab') {
+      let url = `${getClassicBase()}/${obj.setupId}`; // fallback
+
+      // Attempt to find the matching Object to extract its keyPrefix (e.g., "a00")
+      let sObj = null;
+      if (obj.sobjectName) {
+        // Case-insensitive match on API name
+        const targetName = obj.sobjectName.toLowerCase();
+        sObj = objectsList.find(o => o.type === 'Object' && o.name.toLowerCase() === targetName);
+      }
+
+      // Fallback: For Custom Object Tabs, Salesforce TabDefinition DurableId is the 01I setup ID
+      if (!sObj && obj.setupId && obj.setupId.startsWith('01I')) {
+        const setupId15 = obj.setupId.substring(0, 15);
+        sObj = objectsList.find(o => o.type === 'Object' && o.setupId && o.setupId.startsWith(setupId15));
+      }
+
+      if (sObj && sObj.keyPrefix) {
+        url = `${getClassicBase()}/${sObj.keyPrefix}/o`;
+      } else if (obj.sobjectName) {
+        // Ultimate Fallback: If Salesforce API fails to provide the 3-character keyPrefix for this object,
+        // it is impossible to build the Classic URL. We must fallback to the Lightning URL format, 
+        // which natively uses the API name instead of the keyPrefix. 
+        // Salesforce will automatically redirect back to Classic if the user's settings require it.
+        url = `${getLightningBase()}/lightning/o/${obj.sobjectName}/home`;
+      }
+
+      openClassicUrl(url);
       return;
     }
 
@@ -827,6 +1012,17 @@
         } else {
           // Standard Object fields setup page
           destination = `p/setup/layout/LayoutFieldList?type=${objectName}`;
+        }
+      } else if (obj.type === 'PlatformEvent') {
+        // Platform Events — open in Classic using the 01I setup entity ID
+        // (Classic routes correctly given a real entity ID, same pattern as Flows)
+        if (obj.setupId) {
+          destination = obj.setupId.substring(0, 15);
+        } else {
+          // Fallback: open Platform Events list in Lightning Setup
+          const url = `${getLightningBase()}/lightning/setup/EventDefinitions/home`;
+          window.open(url, '_blank');
+          return;
         }
       } else if (obj.type === 'Setting') {
         // Custom Setting setup (durable ID points to standard Custom Object editor)
@@ -885,7 +1081,25 @@
     // 1. Render always-visible Side Panel
     initSidePanel();
 
-    // 2. Parse record page details
+    // 2. Check global setting — if toolbar is disabled, skip rendering
+    try {
+      const stored = await chrome.storage.local.get(['sfn_toolbar_enabled']);
+      if (stored.sfn_toolbar_enabled === false) {
+        // Remove toolbar if it somehow exists
+        const el = document.getElementById(TOOLBAR_ID);
+        if (el) el.remove();
+        return;
+      }
+    } catch (e) {
+      // storage unavailable — continue normally
+    }
+
+    // 3. Check per-load hide flag (set when user clicks ×, resets on page refresh)
+    if (toolbarHiddenThisLoad) {
+      return;
+    }
+
+    // 4. Parse record page details
     const page = parsePage();
     if (!page) {
       const el = document.getElementById(TOOLBAR_ID);

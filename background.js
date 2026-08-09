@@ -50,9 +50,25 @@ async function handleGetObjects(msg, sender) {
   const rawBase = tabUrl ? `${tabUrl.protocol}//${tabUrl.hostname}` : (msg.baseUrl || '');
   const apiBase = toClassicBase(rawBase);
   const hostname = new URL(apiBase).hostname;
+  const cacheKey = `sf_objects_${hostname}`;
 
-  if (objectsCache.has(hostname)) {
-    return objectsCache.get(hostname);
+  if (!msg.forceRefresh) {
+    if (objectsCache.has(hostname)) {
+      return objectsCache.get(hostname);
+    }
+
+    // Check persistent cache to avoid 8-12s API load time
+    try {
+      const stored = await chrome.storage.local.get([cacheKey, `${cacheKey}_time`]);
+      const now = Date.now();
+      // Use cache if it's less than 24 hours old
+      if (stored[cacheKey] && stored[`${cacheKey}_time`] && (now - stored[`${cacheKey}_time`] < 24 * 60 * 60 * 1000)) {
+        objectsCache.set(hostname, stored[cacheKey]);
+        return stored[cacheKey];
+      }
+    } catch (e) {
+      console.warn('[SF Pilot] Cache read failed:', e);
+    }
   }
 
   const sid = await getSid(apiBase);
@@ -78,9 +94,10 @@ async function handleGetObjects(msg, sender) {
             const devName = r.DeveloperName || '';
             const baseApiName = ns + devName;
 
-            // Map both standard custom objects (__c) and custom metadata (__mdt) in lowercase
+            // Map custom objects (__c), custom metadata (__mdt) and platform events (__e)
             customObjectIds.set((baseApiName + '__c').toLowerCase(), r.Id);
             customObjectIds.set((baseApiName + '__mdt').toLowerCase(), r.Id);
+            customObjectIds.set((baseApiName + '__e').toLowerCase(), r.Id);
           }
         }
       }
@@ -164,6 +181,55 @@ async function handleGetObjects(msg, sender) {
     return [];
   })();
 
+  // 8. Fetch Flows via Tooling API (Parallel)
+  const flowsPromise = (async () => {
+    try {
+      const qUrl = `${apiBase}/services/data/${ver}/tooling/query?q=SELECT+Id,DeveloperName,MasterLabel+FROM+FlowDefinition+WHERE+NamespacePrefix=null`;
+      const resp = await fetch(qUrl, { headers, signal: controller.signal });
+      if (resp.ok) {
+        const d = await resp.json();
+        return (d.records || []).map(r => ({
+          label: r.MasterLabel || r.DeveloperName,
+          name: r.DeveloperName,
+          type: 'Flow',
+          setupId: r.Id  // FlowDefinition ID (300xxx) — opens Flow Detail page in Classic
+        }));
+      }
+    } catch (e) {
+      console.warn('[SF Pilot] Flow fetch failed:', e.message);
+    }
+    return [];
+  })();
+
+  // 9. Fetch Tabs via reliable REST API (Parallel)
+  const tabsPromise = (async () => {
+    try {
+      const qUrl = `${apiBase}/services/data/${ver}/tabs`;
+      const resp = await fetch(qUrl, { headers, signal: controller.signal });
+      if (resp.ok) {
+        const tabsArr = await resp.json();
+        const customTabs = [];
+        for (const tab of tabsArr) {
+          if (tab.custom) {
+            customTabs.push({
+              label: tab.label,
+              name: tab.name,
+              type: 'Tab',
+              sobjectName: tab.sobjectName || tab.name,
+              setupId: tab.name // fallback identifier
+            });
+          }
+        }
+        return customTabs;
+      } else {
+        console.warn('[SF Pilot] Tabs REST API returned status:', resp.status);
+      }
+    } catch (e) {
+      console.warn('[SF Pilot] Tabs fetch failed:', e.message);
+    }
+    return [];
+  })();
+
   // 7. Fetch Custom Settings (Parallel)
   const settingsPromise = (async () => {
     try {
@@ -185,37 +251,44 @@ async function handleGetObjects(msg, sender) {
   })();
 
   try {
-    const [_, data, classes, triggers, pages, labels, settings] = await Promise.all([
+    const [_, data, classes, triggers, pages, labels, settings, flows, tabs] = await Promise.all([
       toolingPromise,
       sobjectsPromise,
       classesPromise,
       triggersPromise,
       pagesPromise,
       labelsPromise,
-      settingsPromise
+      settingsPromise,
+      flowsPromise,
+      tabsPromise
     ]);
 
     const unifiedList = [];
     const customSettingsNames = new Set(settings.map(s => s.name.toLowerCase()));
 
     // Add sObjects (filter out Custom Settings to avoid double listing)
+    // Also include Platform Events (__e) which may not be layoutable
     if (data && Array.isArray(data.sobjects)) {
       const sobjects = data.sobjects
         .filter(o => {
           const nameLower = o.name.toLowerCase();
+          const isPlatformEvent = nameLower.endsWith('__e');
+          if (isPlatformEvent) return true; // always include platform events
           return o.queryable && (o.layoutable || nameLower.endsWith('__mdt')) && !customSettingsNames.has(nameLower);
         })
         .map(o => {
+          const nameLower = o.name.toLowerCase();
+          const isPlatformEvent = nameLower.endsWith('__e');
           let setupId = null;
           if (o.custom) {
-            setupId = customObjectIds.get(o.name.toLowerCase()) || null;
+            setupId = customObjectIds.get(nameLower) || null;
           } else {
             setupId = o.name;
           }
           return {
             label: o.label || '',
             name: o.name || '',
-            type: 'Object',
+            type: isPlatformEvent ? 'PlatformEvent' : 'Object',
             custom: o.custom,
             setupId: setupId
           };
@@ -223,13 +296,24 @@ async function handleGetObjects(msg, sender) {
       unifiedList.push(...sobjects);
     }
 
-    // Add Classes, Triggers, Pages, Labels, Settings
-    unifiedList.push(...classes, ...triggers, ...pages, ...labels, ...settings);
+    // Add Classes, Triggers, Pages, Labels, Settings, Flows, Tabs
+    unifiedList.push(...classes, ...triggers, ...pages, ...labels, ...settings, ...flows, ...tabs);
 
     // Sort alphabetically by label name
     unifiedList.sort((a, b) => a.label.localeCompare(b.label));
 
     objectsCache.set(hostname, unifiedList);
+    
+    // Save to persistent cache
+    try {
+      await chrome.storage.local.set({ 
+        [cacheKey]: unifiedList, 
+        [`${cacheKey}_time`]: Date.now() 
+      });
+    } catch (e) {
+      console.warn('[SF Pilot] Cache save failed:', e);
+    }
+    
     return unifiedList;
   } catch (e) {
     throw e;
