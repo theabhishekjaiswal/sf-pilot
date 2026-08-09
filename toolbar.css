@@ -71,16 +71,11 @@
 }
 
 .sfn-logo-icon {
-  width: 22px;
-  height: 22px;
-  border-radius: 7px;
-  background: linear-gradient(135deg, #0176d3 0%, #032d60 100%);
+  width: 16px;
+  height: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow:
-    0 2px 8px rgba(1, 118, 211, 0.5),
-    0 0 0 1px rgba(1, 118, 211, 0.3) inset;
   flex-shrink: 0;
 }
 

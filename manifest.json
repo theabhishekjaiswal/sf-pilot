@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "SF Pilot",
+  "name": "Salesforce Pilot",
   "version": "2.0.0",
-  "description": "Premium Salesforce navigation toolbar. Made with ❤️ by Abhishek Jaiswal.",
+  "description": "Supercharge your Salesforce experience! The ultimate navigation toolbar and blazing fast metadata search.",
   "permissions": [
     "scripting",
     "cookies",
