@@ -607,7 +607,10 @@
 /* ─── Search Panel Footer Branding ───────────────────────────────────────── */
 
 .sfp-search-footer {
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   font-size: 10.5px;
   color: rgba(255, 255, 255, 0.26);
   border-top: 1px solid rgba(255, 255, 255, 0.05);
@@ -619,7 +622,19 @@
   user-select: none;
 }
 
-.sfp-search-panel:hover .sfp-search-footer {
+.sfp-footer-brand {
+  text-align: center;
+}
+
+.sfp-footer-actions {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.sfp-search-panel:hover .sfp-search-footer,
+.sfp-search-panel:hover .sfp-footer-brand {
   color: rgba(255, 255, 255, 0.48);
 }
 
@@ -714,4 +729,194 @@
   background: rgba(99, 102, 241, 0.12);
   color: #818cf8;
   border: 1px solid rgba(99, 102, 241, 0.22);
+}
+
+.sfp-tag--flow {
+  background: rgba(167, 139, 250, 0.12);
+  color: #a78bfa;
+  border: 1px solid rgba(167, 139, 250, 0.22);
+}
+
+.sfp-tag--platformevent {
+  background: rgba(34, 211, 238, 0.10);
+  color: #22d3ee;
+  border: 1px solid rgba(34, 211, 238, 0.20);
+}
+
+.sfp-tag--tab {
+  background: rgba(251, 146, 60, 0.12);
+  color: #fb923c;
+  border: 1px solid rgba(251, 146, 60, 0.22);
+}
+
+/* ─── Toolbar Hide Button ────────────────────────────────────────────────── */
+
+.sfn-hide-btn {
+  all: unset;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.25);
+  margin-left: 2px;
+  flex-shrink: 0;
+  transition: background 0.16s ease, color 0.16s ease, transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.sfn-hide-btn:hover {
+  background: rgba(255, 80, 80, 0.18);
+  color: rgba(255, 120, 120, 0.9);
+  transform: scale(1.15);
+}
+
+.sfn-hide-btn:active {
+  transform: scale(0.92);
+}
+
+/* Tooltip for hide button */
+.sfn-hide-btn {
+  position: relative;
+}
+
+.sfn-hide-btn::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(5px);
+  background: rgba(7, 10, 20, 0.97);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 10.5px;
+  font-weight: 500;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  padding: 5px 9px;
+  border-radius: 8px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.14s ease, transform 0.14s ease;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+  z-index: 10;
+}
+
+.sfn-hide-btn:hover::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ─── Settings Gear Button ───────────────────────────────────────────────── */
+
+.sfp-action-btn {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.3);
+  transition: color 0.18s ease, transform 0.22s ease, background 0.18s ease;
+  flex-shrink: 0;
+}
+
+.sfp-action-btn:hover {
+  color: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.sfp-action-btn:hover svg {
+  transform: rotate(60deg);
+  transition: transform 0.3s ease;
+}
+
+.sfp-gear-label {
+  font-size: 10px;
+  font-weight: 500;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  letter-spacing: 0.3px;
+}
+
+
+/* ─── Inline Settings Panel ──────────────────────────────────────────────── */
+
+.sfp-settings-panel {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 2px;
+  animation: sfp-scale-up 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.sfp-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sfp-settings-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.7);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  user-select: none;
+}
+
+/* ─── Toggle Switch ──────────────────────────────────────────────────────── */
+
+.sfp-toggle {
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 18px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.sfp-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.sfp-toggle-slider {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  transition: background 0.22s ease;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sfp-toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  left: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: 50%;
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.22s ease;
+}
+
+.sfp-toggle input:checked + .sfp-toggle-slider {
+  background: rgba(1, 118, 211, 0.75);
+  border-color: rgba(1, 118, 211, 0.4);
+}
+
+.sfp-toggle input:checked + .sfp-toggle-slider::before {
+  transform: translateX(16px) translateY(-50%);
+  background: #fff;
 }

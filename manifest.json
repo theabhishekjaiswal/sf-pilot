@@ -1,11 +1,12 @@
 {
   "manifest_version": 3,
   "name": "SF Pilot",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "description": "Premium Salesforce navigation toolbar. Made with ❤️ by Abhishek Jaiswal.",
   "permissions": [
     "scripting",
-    "cookies"
+    "cookies",
+    "storage"
   ],
   "host_permissions": [
     "https://*.salesforce.com/*",
