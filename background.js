@@ -215,8 +215,9 @@ async function handleGetObjects(msg, sender) {
               label: tab.label,
               name: tab.name,
               type: 'Tab',
-              sobjectName: tab.sobjectName || tab.name,
-              setupId: tab.name // fallback identifier
+              sobjectName: tab.sobjectName || null,
+              setupId: tab.name, // fallback identifier
+              tabUrl: tab.url || null
             });
           }
         }
