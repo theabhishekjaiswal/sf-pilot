@@ -50,6 +50,30 @@
       "run_at": "document_idle"
     }
   ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "data.html",
+        "data.css",
+        "data.js",
+        "logo128.png"
+      ],
+      "matches": [
+        "https://*.salesforce.com/*",
+        "https://*.force.com/*",
+        "https://*.lightning.force.com/*",
+        "https://*.my.salesforce.com/*",
+        "https://*.sandbox.lightning.force.com/*",
+        "https://*.sandbox.my.salesforce.com/*",
+        "https://*.develop.lightning.force.com/*",
+        "https://*.develop.my.salesforce.com/*",
+        "https://*.salesforce-setup.com/*",
+        "https://*.my.salesforce-setup.com/*",
+        "https://*.sandbox.my.salesforce-setup.com/*",
+        "https://*.develop.my.salesforce-setup.com/*"
+      ]
+    }
+  ],
   "icons": {
     "16": "logo16.png",
     "32": "logo32.png",
