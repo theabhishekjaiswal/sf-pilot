@@ -46,7 +46,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // ─── sObjects list handler ───────────────────────────────────────────────────
 
 async function handleGetObjects(msg, sender) {
-  const tabUrl = sender.tab && sender.tab.url ? new URL(sender.tab.url) : null;
+  const isExt = sender.tab && sender.tab.url && sender.tab.url.startsWith('chrome-extension:');
+  const tabUrl = sender.tab && sender.tab.url && !isExt ? new URL(sender.tab.url) : null;
   const rawBase = tabUrl ? `${tabUrl.protocol}//${tabUrl.hostname}` : (msg.baseUrl || '');
   const apiBase = toClassicBase(rawBase);
   const hostname = new URL(apiBase).hostname;
@@ -357,7 +358,9 @@ function toClassicBase(urlOrString) {
 
 async function handleRequest(msg, sender) {
   // Derive the tab's origin (most reliable), fall back to message payload
-  const tabUrl = sender.tab && sender.tab.url ? new URL(sender.tab.url) : null;
+  // Ignore chrome-extension:// origins so our own internal pages can provide their own msg.baseUrl
+  const isExt = sender.tab && sender.tab.url && sender.tab.url.startsWith('chrome-extension:');
+  const tabUrl = sender.tab && sender.tab.url && !isExt ? new URL(sender.tab.url) : null;
   const rawBase = tabUrl
     ? `${tabUrl.protocol}//${tabUrl.hostname}`
     : (msg.baseUrl || '');
@@ -381,14 +384,24 @@ async function handleRequest(msg, sender) {
     url = toClassicBase(msg.url).replace(/\/\/$/, '') + new URL(msg.url).pathname + new URL(msg.url).search;
   }
 
-  const resp = await fetch(url, { headers });
+  const fetchOptions = {
+    method: msg.method || 'GET',
+    headers
+  };
+  if (msg.body) {
+    headers['Content-Type'] = 'application/json';
+    fetchOptions.body = JSON.stringify(msg.body);
+  }
+
+  const resp = await fetch(url, fetchOptions);
 
   if (!resp.ok) {
     const body = await resp.text().catch(() => '');
     throw new Error(`HTTP ${resp.status}: ${body.slice(0, 300)}`);
   }
 
-  return resp.json();
+  const text = await resp.text().catch(() => '');
+  return text ? JSON.parse(text) : {};
 }
 
 // ─── Session ID helper ────────────────────────────────────────────────────────

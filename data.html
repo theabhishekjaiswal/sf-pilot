@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Record Data | SF Pilot</title>
+  <link rel="stylesheet" href="data.css">
+</head>
+<body>
+  <div class="sfp-data-container">
+    <header class="sfp-data-header">
+      <div class="sfp-header-left">
+        <svg class="sfp-header-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+        <div class="sfp-header-titles">
+          <h1 id="sfp-record-title">Record Data</h1>
+          <h2 id="sfp-object-type">Loading...</h2>
+        </div>
+      </div>
+        <div class="sfp-header-right">
+          <div id="sfp-action-buttons" style="display: none;">
+            <button id="sfp-btn-cancel" class="sfp-btn sfp-btn-secondary">Cancel</button>
+            <button id="sfp-btn-save" class="sfp-btn sfp-btn-primary">Save Changes</button>
+          </div>
+          
+          <div class="sfp-toolbar-group">
+            <select id="sfp-type-filter" class="sfp-select sfp-toolbar-select">
+              <option value="all">All Types</option>
+            </select>
+
+            <div class="sfp-divider"></div>
+
+            <label class="sfp-toggle-label">
+              <span class="sfp-toggle-text">Hide Empty</span>
+              <input type="checkbox" id="sfp-hide-empty" />
+              <span class="sfp-toggle-switch"></span>
+            </label>
+          </div>
+          
+          <div class="sfp-search-wrapper">
+            <svg class="sfp-search-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="sfp-search-input" placeholder="Search fields..." autocomplete="off" />
+          </div>
+          <span id="sfp-field-count">0 fields</span>
+        </div>
+    </header>
+
+    <main class="sfp-data-main">
+      <div id="sfp-loading-state" class="sfp-state-container">
+        <div class="sfp-spinner"></div>
+        <p>Fetching record data...</p>
+      </div>
+
+      <div id="sfp-error-state" class="sfp-state-container" style="display: none;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+        <p id="sfp-error-msg">An error occurred.</p>
+      </div>
+
+      <table id="sfp-data-table" style="display: none;">
+        <thead>
+          <tr>
+            <th class="col-label">Field Label</th>
+            <th class="col-name">API Name</th>
+            <th class="col-type">Type</th>
+            <th class="col-value">Value</th>
+          </tr>
+        </thead>
+        <tbody id="sfp-table-body">
+          <!-- Rows will be injected here -->
+        </tbody>
+      </table>
+    </main>
+  </div>
+  <script src="data.js"></script>
+</body>
+</html>
