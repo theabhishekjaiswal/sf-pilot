@@ -689,15 +689,15 @@
             </div>
             <ul class="sfp-dropdown-list" id="sfp-dropdown-list">
               <li data-value="All" class="selected">All Types</li>
-              <li data-value="Shortcut">Shortcut</li>
               <li data-value="Object">Object / Metadata / Setting</li>
+              <li data-value="Tab">Tab</li>
+              <li data-value="Label">Custom Label</li>
+              <li data-value="Page">Visualforce Page</li>
+              <li data-value="Flow">Flow</li>
+              <li data-value="Shortcut">Shortcut</li>
               <li data-value="PlatformEvent">Platform Event</li>
               <li data-value="Class">Apex Class</li>
               <li data-value="Trigger">Apex Trigger</li>
-              <li data-value="Page">Visualforce Page</li>
-              <li data-value="Label">Custom Label</li>
-              <li data-value="Flow">Flow</li>
-              <li data-value="Tab">Tab</li>
               <li data-value="Profile">Profile</li>
               <li data-value="Permission Set">Permission Set</li>
             </ul>
@@ -854,6 +854,20 @@
     // Always reset settings panel to hidden when modal opens
     const sp = modal.querySelector('#sfp-settings-panel');
     if (sp) sp.style.display = 'none';
+
+    // Reset dropdown to "All Types"
+    const dropdownLabel = modal.querySelector('#sfp-dropdown-label');
+    const dropdownList = modal.querySelector('#sfp-dropdown-list');
+    if (dropdownLabel) dropdownLabel.textContent = 'All Types';
+    if (dropdownList) {
+      dropdownList.querySelectorAll('li').forEach(li => {
+        if (li.getAttribute('data-value') === 'All') {
+          li.classList.add('selected');
+        } else {
+          li.classList.remove('selected');
+        }
+      });
+    }
 
     const input = modal.querySelector('.sfp-search-input');
     input.value = '';
