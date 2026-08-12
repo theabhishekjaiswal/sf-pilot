@@ -252,8 +252,48 @@ async function handleGetObjects(msg, sender) {
     return [];
   })();
 
+  // 10. Fetch Profiles via Tooling/REST (Parallel)
+  const profilesPromise = (async () => {
+    try {
+      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+Profile`;
+      const resp = await fetch(qUrl, { headers, signal: controller.signal });
+      if (resp.ok) {
+        const d = await resp.json();
+        return (d.records || []).map(r => ({
+          label: r.Name,
+          name: r.Name,
+          type: 'Profile',
+          setupId: r.Id
+        }));
+      }
+    } catch (e) {
+      console.warn('[SF Pilot] Profiles fetch failed:', e.message);
+    }
+    return [];
+  })();
+
+  // 11. Fetch Permission Sets via Tooling/REST (Parallel)
+  const permissionSetsPromise = (async () => {
+    try {
+      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name,Label+FROM+PermissionSet+WHERE+IsOwnedByProfile=false`;
+      const resp = await fetch(qUrl, { headers, signal: controller.signal });
+      if (resp.ok) {
+        const d = await resp.json();
+        return (d.records || []).map(r => ({
+          label: r.Label || r.Name,
+          name: r.Name,
+          type: 'Permission Set',
+          setupId: r.Id
+        }));
+      }
+    } catch (e) {
+      console.warn('[SF Pilot] Permission Sets fetch failed:', e.message);
+    }
+    return [];
+  })();
+
   try {
-    const [_, data, classes, triggers, pages, labels, settings, flows, tabs] = await Promise.all([
+    const [_, data, classes, triggers, pages, labels, settings, flows, tabs, profiles, permissionSets] = await Promise.all([
       toolingPromise,
       sobjectsPromise,
       classesPromise,
@@ -262,7 +302,9 @@ async function handleGetObjects(msg, sender) {
       labelsPromise,
       settingsPromise,
       flowsPromise,
-      tabsPromise
+      tabsPromise,
+      profilesPromise,
+      permissionSetsPromise
     ]);
 
     const unifiedList = [];
@@ -299,7 +341,15 @@ async function handleGetObjects(msg, sender) {
     }
 
     // Add Classes, Triggers, Pages, Labels, Settings, Flows, Tabs
-    unifiedList.push(...classes, ...triggers, ...pages, ...labels, ...settings, ...flows, ...tabs);
+    unifiedList.push(...classes);
+    unifiedList.push(...triggers);
+    unifiedList.push(...pages);
+    unifiedList.push(...labels);
+    unifiedList.push(...settings);
+    unifiedList.push(...flows);
+    unifiedList.push(...tabs);
+    unifiedList.push(...profiles);
+    unifiedList.push(...permissionSets);
 
     // Sort alphabetically by label name
     unifiedList.sort((a, b) => a.label.localeCompare(b.label));

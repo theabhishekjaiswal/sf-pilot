@@ -206,7 +206,7 @@
     try {
       const prefix = recordId.substring(0, 3);
       const query = `SELECT QualifiedApiName FROM EntityDefinition WHERE KeyPrefix = '${prefix}' LIMIT 1`;
-      
+
       const resp = await new Promise((resolve) => {
         chrome.runtime.sendMessage({ type: 'sfQuery', query: query, baseUrl: getApiBaseUrl() }, resolve);
       });
@@ -288,7 +288,7 @@
 
     try {
       const data = await bgQuery(
-        `SELECT Id FROM clcommon__Party__c WHERE genesis__Application__c = '${appId}' LIMIT 1`
+        `SELECT Id FROM clcommon__Party__c WHERE genesis__Application__c = '${appId}' AND clcommon__Type__r.Name ='BORROWER' LIMIT 1`
       );
       if (data.records && data.records.length > 0) {
         result.partyId = data.records[0].Id || null;
@@ -682,6 +682,26 @@
             <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </div>
           <input type="text" class="sfp-search-input" placeholder="Search anything..." autocomplete="off">
+          <div class="sfp-custom-dropdown" id="sfp-type-dropdown">
+            <div class="sfp-dropdown-header" id="sfp-dropdown-header">
+              <span class="sfp-dropdown-label" id="sfp-dropdown-label">All Types</span>
+              <svg class="sfp-dropdown-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <ul class="sfp-dropdown-list" id="sfp-dropdown-list">
+              <li data-value="All" class="selected">All Types</li>
+              <li data-value="Shortcut">Shortcut</li>
+              <li data-value="Object">Object / Metadata / Setting</li>
+              <li data-value="PlatformEvent">Platform Event</li>
+              <li data-value="Class">Apex Class</li>
+              <li data-value="Trigger">Apex Trigger</li>
+              <li data-value="Page">Visualforce Page</li>
+              <li data-value="Label">Custom Label</li>
+              <li data-value="Flow">Flow</li>
+              <li data-value="Tab">Tab</li>
+              <li data-value="Profile">Profile</li>
+              <li data-value="Permission Set">Permission Set</li>
+            </ul>
+          </div>
         </div>
         <div class="sfp-results-list"></div>
         <div class="sfp-settings-panel" id="sfp-settings-panel" style="display:none;">
@@ -710,6 +730,34 @@
     });
 
     const input = modal.querySelector('.sfp-search-input');
+
+    // Custom Dropdown logic
+    const dropdownHeader = modal.querySelector('#sfp-dropdown-header');
+    const dropdownLabel = modal.querySelector('#sfp-dropdown-label');
+    const dropdownList = modal.querySelector('#sfp-dropdown-list');
+    const dropdownContainer = modal.querySelector('#sfp-type-dropdown');
+
+    let currentFilterValue = 'All';
+
+    dropdownHeader.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dropdownContainer.classList.toggle('open');
+    });
+
+    dropdownList.querySelectorAll('li').forEach(li => {
+      li.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dropdownList.querySelectorAll('li').forEach(el => el.classList.remove('selected'));
+        li.classList.add('selected');
+
+        currentFilterValue = li.getAttribute('data-value');
+        dropdownLabel.textContent = li.textContent;
+        dropdownContainer.classList.remove('open');
+
+        handleSearchInput({ target: input });
+      });
+    });
+
     input.addEventListener('input', handleSearchInput);
     input.addEventListener('keydown', handleSearchKeydown);
 
@@ -719,13 +767,19 @@
     const settingsPanel = modal.querySelector('#sfp-settings-panel');
     const navbarToggle = modal.querySelector('#sfp-toggle-navbar');
 
-    // Auto-close settings panel when clicking anywhere outside it
+    // Auto-close settings panel and custom dropdown when clicking anywhere outside it
     modal.querySelector('.sfp-search-panel').addEventListener('click', (e) => {
       if (settingsPanel.style.display !== 'none') {
         const clickedInsideSettings = settingsPanel.contains(e.target);
         const clickedGear = gearBtn === e.target || gearBtn.contains(e.target);
         if (!clickedInsideSettings && !clickedGear) {
           settingsPanel.style.display = 'none';
+        }
+      }
+
+      if (dropdownContainer && dropdownContainer.classList.contains('open')) {
+        if (!dropdownContainer.contains(e.target)) {
+          dropdownContainer.classList.remove('open');
         }
       }
     });
@@ -845,20 +899,61 @@
   }
 
   function handleSearchInput(e) {
-    const query = e.target.value.toLowerCase().trim();
+    const modal = document.getElementById(MODAL_ID);
+    if (!modal) return;
+
+    const input = e.target || modal.querySelector('.sfp-search-input');
+    const dropdownList = modal.querySelector('#sfp-dropdown-list');
+
+    const query = input.value.toLowerCase().trim();
+    let typeVal = 'All';
+    if (dropdownList) {
+      const selectedLi = dropdownList.querySelector('li.selected');
+      if (selectedLi) typeVal = selectedLi.getAttribute('data-value');
+    }
     activeIndex = -1;
 
-    if (!query) {
-      filteredObjects = objectsList.slice(0, 50);
-      renderResults();
-      return;
+    let filtered = objectsList;
+
+    // 1. Filter by Type
+    if (typeVal !== 'All') {
+      filtered = filtered.filter(o => {
+        if (typeVal === 'Object') return o.type === 'Object' || o.type === 'Setting';
+        return o.type === typeVal;
+      });
     }
 
-    filteredObjects = objectsList.filter(o =>
-      o.label.toLowerCase().includes(query) ||
-      o.name.toLowerCase().includes(query)
-    );
+    // 2. Filter by Query (Fuzzy Match)
+    if (query) {
+      filtered = filtered.filter(o => {
+        const lbl = o.label.toLowerCase();
+        const nm = o.name.toLowerCase();
 
+        // Exact substring match first for speed
+        if (lbl.includes(query) || nm.includes(query)) return true;
+
+        // Fuzzy Subsequence Match
+        let pIdx = 0, sIdx = 0, pLen = query.length;
+
+        // Check Label
+        let sLen = lbl.length;
+        while (pIdx < pLen && sIdx < sLen) {
+          if (query.charCodeAt(pIdx) === lbl.charCodeAt(sIdx)) pIdx++;
+          sIdx++;
+        }
+        if (pIdx === pLen) return true;
+
+        // Check API Name
+        pIdx = 0; sIdx = 0; sLen = nm.length;
+        while (pIdx < pLen && sIdx < sLen) {
+          if (query.charCodeAt(pIdx) === nm.charCodeAt(sIdx)) pIdx++;
+          sIdx++;
+        }
+        return pIdx === pLen;
+      });
+    }
+
+    filteredObjects = filtered.slice(0, 50);
     renderResults();
   }
 
@@ -941,7 +1036,7 @@
     listDiv.innerHTML = filteredObjects
       .slice(0, 60)
       .map((o, idx) => {
-        const tagClass = `sfp-tag--${o.type.toLowerCase()}`;
+        const tagClass = `sfp-tag--${o.type.toLowerCase().replace(/\s+/g, '')}`;
         return `
           <div class="sfp-result-item" data-index="${idx}" data-name="${o.name}" data-type="${o.type}">
             <div class="sfp-item-left">
@@ -1055,10 +1150,14 @@
         // Custom Setting setup (durable ID points to standard Custom Object editor)
         if (obj.setupId) {
           const setupId15 = obj.setupId.substring(0, 15);
-          destination = `${setupId15}?setupid=CustomObjects`;
+          destination = `${setupId15}?setupid=CustomSettings`;
         } else {
           destination = 'setup/ui/customsettings.jsp';
         }
+      } else if (obj.type === 'Shortcut') {
+        destination = obj.setupId;
+      } else if (obj.type === 'Profile' || obj.type === 'Permission Set') {
+        destination = obj.setupId;
       } else {
         // Apex Class, Apex Trigger, Visualforce Page, Custom Label setup detail page
         destination = obj.setupId;
