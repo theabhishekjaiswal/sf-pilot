@@ -996,12 +996,15 @@
 }
 
 .sfp-dropdown-list li {
+  list-style: none;
+  margin: 0;
   padding: 6px 12px;
   font-size: 11px;
   color: #f8fafc;
   cursor: pointer;
   transition: background 0.1s;
   white-space: nowrap;
+  text-align: left;
 }
 
 .sfp-dropdown-list li:hover {
