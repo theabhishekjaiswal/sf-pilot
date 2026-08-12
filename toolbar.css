@@ -739,9 +739,21 @@
 }
 
 .sfp-tag--tab {
-  background: rgba(251, 146, 60, 0.12);
-  color: #fb923c;
-  border: 1px solid rgba(251, 146, 60, 0.22);
+  background: rgba(236, 72, 153, 0.12);
+  color: #ec4899;
+  border: 1px solid rgba(236, 72, 153, 0.22);
+}
+
+.sfp-tag--profile {
+  background: rgba(20, 184, 166, 0.12);
+  color: #14b8a6;
+  border: 1px solid rgba(20, 184, 166, 0.22);
+}
+
+.sfp-tag--permissionset {
+  background: rgba(244, 63, 94, 0.12);
+  color: #f43f5e;
+  border: 1px solid rgba(244, 63, 94, 0.22);
 }
 
 /* ─── Toolbar Hide Button ────────────────────────────────────────────────── */
@@ -914,4 +926,105 @@
 .sfp-toggle input:checked + .sfp-toggle-slider::before {
   transform: translateX(16px) translateY(-50%);
   background: #fff;
+}
+
+
+
+/* Custom Dropdown UI */
+.sfp-custom-dropdown {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: inherit;
+  z-index: 1000;
+}
+
+.sfp-dropdown-header {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.sfp-dropdown-header:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(96, 165, 250, 0.5);
+}
+
+.sfp-dropdown-icon {
+  transition: transform 0.2s;
+}
+
+.sfp-custom-dropdown.open .sfp-dropdown-icon {
+  transform: rotate(180deg);
+}
+
+.sfp-dropdown-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  padding: 4px 0;
+  margin: 0;
+  list-style: none;
+  min-width: 140px;
+  max-height: 200px;
+  overflow-y: auto;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: all 0.2s;
+}
+
+.sfp-custom-dropdown.open .sfp-dropdown-list {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.sfp-dropdown-list li {
+  padding: 6px 12px;
+  font-size: 11px;
+  color: #f8fafc;
+  cursor: pointer;
+  transition: background 0.1s;
+  white-space: nowrap;
+}
+
+.sfp-dropdown-list li:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.sfp-dropdown-list li.selected {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+  font-weight: 600;
+}
+
+/* Custom Scrollbar for Dropdown */
+.sfp-dropdown-list::-webkit-scrollbar {
+  width: 6px;
+}
+.sfp-dropdown-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sfp-dropdown-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+.sfp-dropdown-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
 }

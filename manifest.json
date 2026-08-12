@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Salesforce Pilot",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Supercharge your Salesforce experience! The ultimate navigation toolbar and blazing fast metadata search.",
   "permissions": [
     "scripting",
