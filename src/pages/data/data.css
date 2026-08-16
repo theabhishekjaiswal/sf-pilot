@@ -281,6 +281,20 @@ tbody tr:hover {
   fill: #facc15;
 }
 
+.drag-grip {
+  color: rgba(255, 255, 255, 0.2);
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  transition: color 0.2s ease;
+}
+.drag-grip:hover {
+  color: rgba(255, 255, 255, 0.6);
+}
+.drag-grip:active {
+  cursor: grabbing;
+}
+
 .col-name { width: 25%; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; color: var(--text-muted); font-size: 12px; }
 .col-type { 
   width: 15%; 
@@ -515,3 +529,23 @@ select.sfp-select option {
   height: 20px;
   background: rgba(255, 255, 255, 0.15);
 }
+
+/* Drag and Drop Styles for Pinned Fields */
+.draggable-row {
+  cursor: grab;
+}
+.draggable-row:active {
+  cursor: grabbing;
+}
+.draggable-row.is-dragging {
+  opacity: 0.5;
+  background: rgba(255, 255, 255, 0.1);
+  transform: scale(0.98);
+}
+.draggable-row.drag-over-top {
+  border-top: 2px solid var(--accent-color);
+}
+.draggable-row.drag-over-bottom {
+  border-bottom: 2px solid var(--accent-color);
+}
+
