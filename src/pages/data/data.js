@@ -125,12 +125,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       const savedPins = await new Promise(res => chrome.storage.sync.get(storageKey, res));
       objectPinnedFields = savedPins[storageKey] || [];
 
-      // Sort alphabetically, but pinned fields bubble to top
+      // Sort alphabetically, but pinned fields bubble to top and maintain exact order
       allFields.sort((a, b) => {
-        const aPinned = objectPinnedFields.includes(a.name);
-        const bPinned = objectPinnedFields.includes(b.name);
-        if (aPinned && !bPinned) return -1;
-        if (!aPinned && bPinned) return 1;
+        const aIndex = objectPinnedFields.indexOf(a.name);
+        const bIndex = objectPinnedFields.indexOf(b.name);
+        if (aIndex !== -1 && bIndex === -1) return -1;
+        if (aIndex === -1 && bIndex !== -1) return 1;
+        if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
         return a.label.localeCompare(b.label);
       });
 
@@ -228,8 +229,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       const starClass = isPinned ? 'pin-star is-pinned' : 'pin-star';
       const starIcon = `<svg class="${starClass}" data-field-name="${escapeHtml(f.name)}" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`;
       
+      let rowAttrs = '';
+      if (isPinned) {
+        rowAttrs = `draggable="true" class="draggable-row" data-field-name="${escapeHtml(f.name)}"`;
+      }
+      
       return `
-        <tr>
+        <tr ${rowAttrs}>
           <td class="col-label" title="${escapeHtml(f.label)}"><div style="display: flex; align-items: center; gap: 6px;">${starIcon} <span>${escapeHtml(f.label)}</span></div></td>
           <td class="col-name">${escapeHtml(f.name)}</td>
           <td class="col-type">${getTypeIcon(f.type)} ${escapeHtml(f.type)}</td>
@@ -578,15 +584,108 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       // Re-sort and render
       allFields.sort((a, b) => {
-        const aPinned = objectPinnedFields.includes(a.name);
-        const bPinned = objectPinnedFields.includes(b.name);
-        if (aPinned && !bPinned) return -1;
-        if (!aPinned && bPinned) return 1;
+        const aIndex = objectPinnedFields.indexOf(a.name);
+        const bIndex = objectPinnedFields.indexOf(b.name);
+        if (aIndex !== -1 && bIndex === -1) return -1;
+        if (aIndex === -1 && bIndex !== -1) return 1;
+        if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
         return a.label.localeCompare(b.label);
       });
       
       applyFilters();
     }
+  });
+
+  // --- Drag and Drop for Pinned Fields ---
+  let draggedField = null;
+
+  tbody.addEventListener('dragstart', (e) => {
+    const row = e.target.closest('.draggable-row');
+    if (!row) return;
+    draggedField = row.dataset.fieldName;
+    row.classList.add('is-dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', draggedField);
+  });
+
+  tbody.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    const row = e.target.closest('.draggable-row');
+    if (!row || !draggedField || row.dataset.fieldName === draggedField) return;
+    
+    const rect = row.getBoundingClientRect();
+    const offset = e.clientY - rect.top;
+    
+    document.querySelectorAll('.draggable-row').forEach(r => {
+      r.classList.remove('drag-over-top', 'drag-over-bottom');
+    });
+    
+    if (offset < rect.height / 2) {
+      row.classList.add('drag-over-top');
+    } else {
+      row.classList.add('drag-over-bottom');
+    }
+    e.dataTransfer.dropEffect = 'move';
+  });
+
+  tbody.addEventListener('dragleave', (e) => {
+    const row = e.target.closest('.draggable-row');
+    if (row) {
+      row.classList.remove('drag-over-top', 'drag-over-bottom');
+    }
+  });
+
+  tbody.addEventListener('drop', (e) => {
+    e.preventDefault();
+    if (!draggedField) return;
+    
+    const row = e.target.closest('.draggable-row');
+    if (!row || row.dataset.fieldName === draggedField) return;
+    
+    const targetField = row.dataset.fieldName;
+    
+    const draggedIdx = objectPinnedFields.indexOf(draggedField);
+    let targetIdx = objectPinnedFields.indexOf(targetField);
+    
+    if (draggedIdx !== -1 && targetIdx !== -1) {
+      objectPinnedFields.splice(draggedIdx, 1);
+      
+      if (row.classList.contains('drag-over-bottom')) {
+        targetIdx = objectPinnedFields.indexOf(targetField) + 1;
+      } else {
+        targetIdx = objectPinnedFields.indexOf(targetField);
+      }
+      
+      objectPinnedFields.splice(targetIdx, 0, draggedField);
+      
+      const storageKey = `sfp_pinned_${objectType}`;
+      chrome.storage.sync.set({ [storageKey]: objectPinnedFields });
+      
+      allFields.sort((a, b) => {
+        const aIndex = objectPinnedFields.indexOf(a.name);
+        const bIndex = objectPinnedFields.indexOf(b.name);
+        if (aIndex !== -1 && bIndex === -1) return -1;
+        if (aIndex === -1 && bIndex !== -1) return 1;
+        if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+        return a.label.localeCompare(b.label);
+      });
+      applyFilters();
+    }
+    
+    document.querySelectorAll('.draggable-row').forEach(r => {
+      r.classList.remove('drag-over-top', 'drag-over-bottom');
+    });
+  });
+
+  tbody.addEventListener('dragend', (e) => {
+    const row = e.target.closest('.draggable-row');
+    if (row) {
+      row.classList.remove('is-dragging', 'drag-over-top', 'drag-over-bottom');
+    }
+    draggedField = null;
+    document.querySelectorAll('.draggable-row').forEach(r => {
+      r.classList.remove('drag-over-top', 'drag-over-bottom');
+    });
   });
 
   // Start Loading
