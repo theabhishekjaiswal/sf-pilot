@@ -409,7 +409,7 @@
         tooltip: 'Show All Data',
         variant: 'party', // Gold variant looks nice for data
         onClick: () => {
-          const extUrl = chrome.runtime.getURL(`data.html?recordId=${page.recordId}&objectType=${page.objectType || ''}&host=${encodeURIComponent(getApiBaseUrl())}`);
+          const extUrl = chrome.runtime.getURL(`src/pages/data/data.html?recordId=${page.recordId}&objectType=${page.objectType || ''}&host=${encodeURIComponent(getApiBaseUrl())}`);
           window.open(extUrl, '_blank');
         }
       }));
