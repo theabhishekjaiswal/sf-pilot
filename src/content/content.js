@@ -142,10 +142,11 @@
     const onLEX = isOnLightningDomain();
 
     // 1. Lightning record:  /lightning/r/{ObjectApiName}/{RecordId}/...
-    const lexMatch = pathname.match(/\/lightning\/r\/([^/]+)\/([a-zA-Z0-9]{15,18})(?:\/|$)/);
+    // The ObjectApiName is sometimes omitted (e.g. /lightning/r/001.../view)
+    const lexMatch = pathname.match(/\/lightning\/r\/(?:([^/]+)\/)?([a-zA-Z0-9]{15,18})(?:\/|$)/);
     if (lexMatch) {
       return {
-        objectType: lexMatch[1],
+        objectType: lexMatch[1] || null,
         recordId: lexMatch[2],
         isLightning: true,
         isRecordPage: true,
@@ -173,7 +174,7 @@
 
     // 3. Apex / Visualforce:  /apex/{PageName}?id={RecordId}
     const apexMatch = pathname.match(/\/apex\/([^/?#]+)/i);
-    const idParam = searchParams.get('id');
+    const idParam = searchParams.get('id') || searchParams.get('recordId') || searchParams.get('c__recordId');
     if (apexMatch && idParam && SF_ID_RE.test(idParam)) {
       const objectType = VF_PAGE_MAP[apexMatch[1].toLowerCase()] || null;
       return {
