@@ -281,6 +281,20 @@ tbody tr:hover {
   fill: #facc15;
 }
 
+.drag-grip {
+  color: rgba(255, 255, 255, 0.2);
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  transition: color 0.2s ease;
+}
+.drag-grip:hover {
+  color: rgba(255, 255, 255, 0.6);
+}
+.drag-grip:active {
+  cursor: grabbing;
+}
+
 .col-name { width: 25%; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; color: var(--text-muted); font-size: 12px; }
 .col-type { 
   width: 15%; 

@@ -229,14 +229,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       const starClass = isPinned ? 'pin-star is-pinned' : 'pin-star';
       const starIcon = `<svg class="${starClass}" data-field-name="${escapeHtml(f.name)}" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`;
       
+      const gripIcon = isPinned ? `<div class="drag-grip" title="Drag to reorder"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg></div>` : `<div style="width: 14px"></div>`;
+      
       let rowAttrs = '';
       if (isPinned) {
-        rowAttrs = `draggable="true" class="draggable-row" data-field-name="${escapeHtml(f.name)}"`;
+        rowAttrs = `class="draggable-row" data-field-name="${escapeHtml(f.name)}"`;
       }
       
       return `
         <tr ${rowAttrs}>
-          <td class="col-label" title="${escapeHtml(f.label)}"><div style="display: flex; align-items: center; gap: 6px;">${starIcon} <span>${escapeHtml(f.label)}</span></div></td>
+          <td class="col-label" title="${escapeHtml(f.label)}"><div style="display: flex; align-items: center; gap: 6px;">${gripIcon} ${starIcon} <span>${escapeHtml(f.label)}</span></div></td>
           <td class="col-name">${escapeHtml(f.name)}</td>
           <td class="col-type">${getTypeIcon(f.type)} ${escapeHtml(f.type)}</td>
           <td class="${cellClasses}" data-field-name="${escapeHtml(f.name)}" data-original-value="${escapeHtml(origValStr)}" data-field-type="${escapeHtml(f.type)}">
@@ -599,6 +601,28 @@ document.addEventListener('DOMContentLoaded', async () => {
   // --- Drag and Drop for Pinned Fields ---
   let draggedField = null;
 
+  // Only allow dragging if they grabbed the grip handle
+  tbody.addEventListener('mousedown', (e) => {
+    const grip = e.target.closest('.drag-grip');
+    if (grip) {
+      const row = grip.closest('.draggable-row');
+      if (row) {
+        row.setAttribute('draggable', 'true');
+      }
+    }
+  });
+
+  tbody.addEventListener('mouseup', (e) => {
+    // Clean up draggable attribute if they just clicked the grip but didn't drag
+    const grip = e.target.closest('.drag-grip');
+    if (grip) {
+      const row = grip.closest('.draggable-row');
+      if (row) {
+        row.removeAttribute('draggable');
+      }
+    }
+  });
+
   tbody.addEventListener('dragstart', (e) => {
     const row = e.target.closest('.draggable-row');
     if (!row) return;
@@ -606,6 +630,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     row.classList.add('is-dragging');
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', draggedField);
+  });
+
+  tbody.addEventListener('dragend', (e) => {
+    const row = e.target.closest('.draggable-row');
+    if (row) {
+      row.removeAttribute('draggable');
+      row.classList.remove('is-dragging');
+    }
   });
 
   tbody.addEventListener('dragover', (e) => {
