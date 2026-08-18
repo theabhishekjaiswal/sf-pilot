@@ -598,127 +598,170 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // --- Drag and Drop for Pinned Fields ---
-  let draggedField = null;
+  // --- Smooth Drag and Drop for Pinned Fields (pointer-event based) -----------
+  // Uses pointerdown/pointermove/pointerup instead of the HTML5 drag API so we
+  // get a smooth floating clone, a clean insertion-line, and no browser ghost.
 
-  // Only allow dragging if they grabbed the grip handle
-  tbody.addEventListener('mousedown', (e) => {
-    const grip = e.target.closest('.drag-grip');
-    if (grip) {
-      const row = grip.closest('.draggable-row');
-      if (row) {
-        row.setAttribute('draggable', 'true');
-      }
+  let dnd = {
+    active: false,
+    fieldName: null,
+    sourceRow: null,
+    clone: null,           // floating visual clone
+    indicator: null,       // horizontal line showing drop position
+    startY: 0,
+    offsetY: 0,            // cursor Y relative to row top
+    targetRow: null,
+    insertBefore: true,    // insert before or after targetRow
+  };
+
+  function dndCleanup() {
+    if (dnd.clone) { dnd.clone.remove(); dnd.clone = null; }
+    if (dnd.indicator) { dnd.indicator.remove(); dnd.indicator = null; }
+    if (dnd.sourceRow) {
+      dnd.sourceRow.classList.remove('is-dragging');
+      dnd.sourceRow.style.opacity = '';
     }
-  });
+    document.querySelectorAll('.draggable-row').forEach(r => r.classList.remove('drag-over-top', 'drag-over-bottom'));
+    dnd.active = false;
+    dnd.fieldName = null;
+    dnd.sourceRow = null;
+    dnd.targetRow = null;
+  }
 
-  tbody.addEventListener('mouseup', (e) => {
-    // Clean up draggable attribute if they just clicked the grip but didn't drag
+  tbody.addEventListener('pointerdown', (e) => {
     const grip = e.target.closest('.drag-grip');
-    if (grip) {
-      const row = grip.closest('.draggable-row');
-      if (row) {
-        row.removeAttribute('draggable');
-      }
-    }
-  });
-
-  tbody.addEventListener('dragstart', (e) => {
-    const row = e.target.closest('.draggable-row');
+    if (!grip) return;
+    const row = grip.closest('.draggable-row');
     if (!row) return;
-    draggedField = row.dataset.fieldName;
-    row.classList.add('is-dragging');
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', draggedField);
-  });
 
-  tbody.addEventListener('dragend', (e) => {
-    const row = e.target.closest('.draggable-row');
-    if (row) {
-      row.removeAttribute('draggable');
-      row.classList.remove('is-dragging');
-    }
-  });
-
-  tbody.addEventListener('dragover', (e) => {
     e.preventDefault();
-    const row = e.target.closest('.draggable-row');
-    if (!row || !draggedField || row.dataset.fieldName === draggedField) return;
-    
+
     const rect = row.getBoundingClientRect();
-    const offset = e.clientY - rect.top;
-    
-    document.querySelectorAll('.draggable-row').forEach(r => {
-      r.classList.remove('drag-over-top', 'drag-over-bottom');
-    });
-    
-    if (offset < rect.height / 2) {
-      row.classList.add('drag-over-top');
+    dnd.fieldName = row.dataset.fieldName;
+    dnd.sourceRow = row;
+    dnd.startY = e.clientY;
+    dnd.offsetY = e.clientY - rect.top;
+    dnd.active = false; // becomes true once cursor moves enough
+
+    // Create floating clone (hidden until drag starts)
+    const clone = row.cloneNode(true);
+    clone.style.cssText = `
+      position: fixed;
+      left: ${rect.left}px;
+      top: ${rect.top}px;
+      width: ${rect.width}px;
+      height: ${rect.height}px;
+      pointer-events: none;
+      z-index: 9999;
+      opacity: 0;
+      background: rgba(15,23,42,0.96);
+      border: 1px solid rgba(255,212,59,0.5);
+      border-radius: 6px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.55);
+      transition: opacity 0.12s ease;
+      box-sizing: border-box;
+    `;
+    document.body.appendChild(clone);
+    dnd.clone = clone;
+
+    // Create insertion-line indicator
+    const indicator = document.createElement('div');
+    indicator.style.cssText = `
+      position: fixed;
+      left: ${rect.left}px;
+      width: ${rect.width}px;
+      height: 2px;
+      background: #ffd43b;
+      border-radius: 2px;
+      z-index: 9999;
+      pointer-events: none;
+      display: none;
+      box-shadow: 0 0 6px rgba(255,212,59,0.6);
+    `;
+    document.body.appendChild(indicator);
+    dnd.indicator = indicator;
+
+    tbody.setPointerCapture(e.pointerId);
+  });
+
+  tbody.addEventListener('pointermove', (e) => {
+    if (!dnd.fieldName) return;
+
+    const dy = Math.abs(e.clientY - dnd.startY);
+
+    // Activate drag after 4px movement threshold
+    if (!dnd.active && dy > 4) {
+      dnd.active = true;
+      dnd.sourceRow.classList.add('is-dragging');
+      dnd.clone.style.opacity = '0.92';
+    }
+
+    if (!dnd.active) return;
+
+    // Move the clone with the cursor
+    const rect = dnd.sourceRow.getBoundingClientRect();
+    dnd.clone.style.top = `${e.clientY - dnd.offsetY}px`;
+
+    // Find which row the cursor is over
+    dnd.sourceRow.style.visibility = 'hidden'; // hide source to hit-test under it
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    dnd.sourceRow.style.visibility = '';
+
+    const targetRow = el ? el.closest('.draggable-row') : null;
+    document.querySelectorAll('.draggable-row').forEach(r => r.classList.remove('drag-over-top', 'drag-over-bottom'));
+
+    if (targetRow && targetRow !== dnd.sourceRow) {
+      const tRect = targetRow.getBoundingClientRect();
+      const insertBefore = e.clientY < tRect.top + tRect.height / 2;
+      dnd.targetRow = targetRow;
+      dnd.insertBefore = insertBefore;
+
+      // Show insertion line
+      const lineY = insertBefore ? tRect.top : tRect.bottom;
+      dnd.indicator.style.top = `${lineY - 1}px`;
+      dnd.indicator.style.display = 'block';
+
+      targetRow.classList.add(insertBefore ? 'drag-over-top' : 'drag-over-bottom');
     } else {
-      row.classList.add('drag-over-bottom');
-    }
-    e.dataTransfer.dropEffect = 'move';
-  });
-
-  tbody.addEventListener('dragleave', (e) => {
-    const row = e.target.closest('.draggable-row');
-    if (row) {
-      row.classList.remove('drag-over-top', 'drag-over-bottom');
+      dnd.targetRow = null;
+      dnd.indicator.style.display = 'none';
     }
   });
 
-  tbody.addEventListener('drop', (e) => {
-    e.preventDefault();
-    if (!draggedField) return;
-    
-    const row = e.target.closest('.draggable-row');
-    if (!row || row.dataset.fieldName === draggedField) return;
-    
-    const targetField = row.dataset.fieldName;
-    
-    const draggedIdx = objectPinnedFields.indexOf(draggedField);
+  tbody.addEventListener('pointerup', () => {
+    if (!dnd.active) { dndCleanup(); return; }
+
+    const { fieldName, targetRow, insertBefore } = dnd;
+    dndCleanup();
+
+    if (!targetRow || !fieldName) return;
+    const targetField = targetRow.dataset.fieldName;
+    if (!targetField || targetField === fieldName) return;
+
+    const draggedIdx = objectPinnedFields.indexOf(fieldName);
+    if (draggedIdx === -1) return;
+
+    objectPinnedFields.splice(draggedIdx, 1);
     let targetIdx = objectPinnedFields.indexOf(targetField);
-    
-    if (draggedIdx !== -1 && targetIdx !== -1) {
-      objectPinnedFields.splice(draggedIdx, 1);
-      
-      if (row.classList.contains('drag-over-bottom')) {
-        targetIdx = objectPinnedFields.indexOf(targetField) + 1;
-      } else {
-        targetIdx = objectPinnedFields.indexOf(targetField);
-      }
-      
-      objectPinnedFields.splice(targetIdx, 0, draggedField);
-      
-      const storageKey = `sfp_pinned_${objectType}`;
-      chrome.storage.sync.set({ [storageKey]: objectPinnedFields });
-      
-      allFields.sort((a, b) => {
-        const aIndex = objectPinnedFields.indexOf(a.name);
-        const bIndex = objectPinnedFields.indexOf(b.name);
-        if (aIndex !== -1 && bIndex === -1) return -1;
-        if (aIndex === -1 && bIndex !== -1) return 1;
-        if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
-        return a.label.localeCompare(b.label);
-      });
-      applyFilters();
-    }
-    
-    document.querySelectorAll('.draggable-row').forEach(r => {
-      r.classList.remove('drag-over-top', 'drag-over-bottom');
+    if (!insertBefore) targetIdx += 1;
+    objectPinnedFields.splice(targetIdx, 0, fieldName);
+
+    const storageKey = `sfp_pinned_${objectType}`;
+    chrome.storage.sync.set({ [storageKey]: objectPinnedFields });
+
+    allFields.sort((a, b) => {
+      const aIndex = objectPinnedFields.indexOf(a.name);
+      const bIndex = objectPinnedFields.indexOf(b.name);
+      if (aIndex !== -1 && bIndex === -1) return -1;
+      if (aIndex === -1 && bIndex !== -1) return 1;
+      if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+      return a.label.localeCompare(b.label);
     });
+    applyFilters();
   });
 
-  tbody.addEventListener('dragend', (e) => {
-    const row = e.target.closest('.draggable-row');
-    if (row) {
-      row.classList.remove('is-dragging', 'drag-over-top', 'drag-over-bottom');
-    }
-    draggedField = null;
-    document.querySelectorAll('.draggable-row').forEach(r => {
-      r.classList.remove('drag-over-top', 'drag-over-bottom');
-    });
-  });
+  tbody.addEventListener('pointercancel', dndCleanup);
+
 
   // Start Loading
   loadData();

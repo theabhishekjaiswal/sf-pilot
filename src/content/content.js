@@ -1,10 +1,12 @@
 /**
- * SF Pilot v4.0.0 — Content Script
+ * SF Pilot v3.1.0 — Content Script
  *
- * Simpler, Faster, Record-Only Navigation:
- *   - Only runs and displays on Salesforce record pages.
- *   - Completely ignores List Views, Homes, Setup, and Metadata pages.
- *   - No subtree MutationObservers, preventing any screen freezing or page lag.
+ * Improvements in 3.1.0:
+ *   - initSidePanel() always runs on every Salesforce page (not just record pages).
+ *   - Ctrl+K / Cmd+K also opens Metadata Search (in addition to Ctrl+Space / Option+Space).
+ *   - Broader VF page detection: any /apex/ URL with a valid ?id= is treated as a record page.
+ *   - Static Resource added to Metadata Search filter.
+ *   - Filter dropdown replaced with a clean native <select>.
  */
 
 (function () {
@@ -29,6 +31,18 @@
 
   if (publicSalesforceDomains.includes(hostname) || /^\/(secur\/|login|services\/|oauth2\/|setup\/secur)/i.test(window.location.pathname)) {
     return;
+  }
+
+  // ─── Guard: skip customer-facing Experience Cloud portals ─────────────────
+  // On my.site.com and salesforce-experience.com we only activate inside the
+  // Experience Builder / Community Setup admin context — NOT on customer portals.
+  const isExperienceDomain = hostname.endsWith('.my.site.com') || hostname.endsWith('.salesforce-experience.com');
+  if (isExperienceDomain) {
+    const path = window.location.pathname + window.location.hash;
+    const isBuilderContext = /communitySetup|cwApp|picasso|commeditor|sfsites\/picasso/i.test(path);
+    if (!isBuilderContext) {
+      return; // Customer-facing portal — do not inject
+    }
   }
 
   // ─── Constants ────────────────────────────────────────────────────────────
@@ -127,6 +141,19 @@
     });
   }
 
+  // Fetch the Salesforce session ID (sid cookie) via the background worker
+  function bgGetSid() {
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage(
+        { type: 'sfGetSid', baseUrl: getApiBaseUrl() },
+        (resp) => {
+          if (chrome.runtime.lastError) return resolve(null);
+          resolve((resp && resp.ok && resp.sid) ? resp.sid : null);
+        }
+      );
+    });
+  }
+
   // ─── Page / record detection ──────────────────────────────────────────────
 
   function objectTypeFromId(id) {
@@ -173,10 +200,17 @@
     }
 
     // 3. Apex / Visualforce:  /apex/{PageName}?id={RecordId}
+    //    Simplified: any VF page with a valid Salesforce ID in ?id= / ?recordId= is treated as a
+    //    record page. objectType is resolved dynamically if not found in VF_PAGE_MAP.
     const apexMatch = pathname.match(/\/apex\/([^/?#]+)/i);
     const idParam = searchParams.get('id') || searchParams.get('recordId') || searchParams.get('c__recordId');
     if (apexMatch && idParam && SF_ID_RE.test(idParam)) {
-      const objectType = VF_PAGE_MAP[apexMatch[1].toLowerCase()] || null;
+      // Skip metadata/setup record IDs on VF pages
+      if (/^(01I|01M|01p|01q|01s|01u|0A2|0to|04G|02a)/.test(idParam)) {
+        return null;
+      }
+      // Look up objectType from map first, fall back to key-prefix lookup, then API resolve
+      const objectType = VF_PAGE_MAP[apexMatch[1].toLowerCase()] || objectTypeFromId(idParam) || null;
       return {
         objectType,
         recordId: idParam,
@@ -185,7 +219,7 @@
       };
     }
 
-    // 4. Generic ?id= fallback
+    // 4. Generic ?id= fallback (any page with a valid SF ID, not just /apex/)
     if (idParam && SF_ID_RE.test(idParam)) {
       if (/^(01I|01M|01p|01q|01s|01u|0A2|0to|04G|02a)/.test(idParam)) {
         return null;
@@ -231,13 +265,14 @@
     return url.toString();
   }
 
-  function switchToClassicUrl(page) {
+  function buildClassicUrl(page) {
     const classicBase = getClassicBase();
     if (page && page.recordId) {
       return `${classicBase}/${page.recordId}`;
     }
     return classicBase;
   }
+
 
   function switchToLightningUrl(page) {
     const lightningBase = getLightningBase();
@@ -386,7 +421,7 @@
       variant: 'classic',
       active: false,
       disabled: !onLEX,
-      onClick: () => openClassicUrl(switchToClassicUrl(page)),
+      onClick: () => openClassicUrl(buildClassicUrl(page)),
     }));
 
     // Lightning button
@@ -668,7 +703,7 @@
     // 1. Create Side Faded Button
     const sideBtn = document.createElement('div');
     sideBtn.id = SIDE_BTN_ID;
-    sideBtn.title = isMac ? 'SF Pilot Search (Option+Space or click)' : 'SF Pilot Search (Ctrl+Space or click)';
+    sideBtn.title = isMac ? 'SF Pilot Search (⌘K or Option+Space)' : 'SF Pilot Search (Ctrl+K or Ctrl+Space)';
     sideBtn.innerHTML = `<span class="sfp-side-icon">${ICONS.logo}</span>`;
     sideBtn.addEventListener('click', openSearchModal);
     document.documentElement.appendChild(sideBtn);
@@ -683,26 +718,21 @@
             <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </div>
           <input type="text" class="sfp-search-input" placeholder="Search anything..." autocomplete="off">
-          <div class="sfp-custom-dropdown" id="sfp-type-dropdown">
-            <div class="sfp-dropdown-header" id="sfp-dropdown-header">
-              <span class="sfp-dropdown-label" id="sfp-dropdown-label">All Types</span>
-              <svg class="sfp-dropdown-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-            </div>
-            <ul class="sfp-dropdown-list" id="sfp-dropdown-list">
-              <li data-value="All" class="selected">All Types</li>
-              <li data-value="Object">Object / Metadata / Setting</li>
-              <li data-value="Tab">Tab</li>
-              <li data-value="Label">Custom Label</li>
-              <li data-value="Page">Visualforce Page</li>
-              <li data-value="Flow">Flow</li>
-              <li data-value="Shortcut">Shortcut</li>
-              <li data-value="PlatformEvent">Platform Event</li>
-              <li data-value="Class">Apex Class</li>
-              <li data-value="Trigger">Apex Trigger</li>
-              <li data-value="Profile">Profile</li>
-              <li data-value="Permission Set">Permission Set</li>
-            </ul>
-          </div>
+          <select class="sfp-type-select" id="sfp-type-select">
+            <option value="All">All Types</option>
+            <option value="Object">Object / Metadata / Setting</option>
+            <option value="Tab">Tab</option>
+            <option value="Label">Custom Label</option>
+            <option value="Page">Visualforce Page</option>
+            <option value="Flow">Flow</option>
+            <option value="StaticResource">Static Resource</option>
+            <option value="Shortcut">Shortcut</option>
+            <option value="PlatformEvent">Platform Event</option>
+            <option value="Class">Apex Class</option>
+            <option value="Trigger">Apex Trigger</option>
+            <option value="Profile">Profile</option>
+            <option value="Permission Set">Permission Set</option>
+          </select>
         </div>
         <div class="sfp-results-list"></div>
         <div class="sfp-settings-panel" id="sfp-settings-panel" style="display:none;">
@@ -732,32 +762,9 @@
 
     const input = modal.querySelector('.sfp-search-input');
 
-    // Custom Dropdown logic
-    const dropdownHeader = modal.querySelector('#sfp-dropdown-header');
-    const dropdownLabel = modal.querySelector('#sfp-dropdown-label');
-    const dropdownList = modal.querySelector('#sfp-dropdown-list');
-    const dropdownContainer = modal.querySelector('#sfp-type-dropdown');
-
-    let currentFilterValue = 'All';
-
-    dropdownHeader.addEventListener('click', (e) => {
-      e.stopPropagation();
-      dropdownContainer.classList.toggle('open');
-    });
-
-    dropdownList.querySelectorAll('li').forEach(li => {
-      li.addEventListener('click', (e) => {
-        e.stopPropagation();
-        dropdownList.querySelectorAll('li').forEach(el => el.classList.remove('selected'));
-        li.classList.add('selected');
-
-        currentFilterValue = li.getAttribute('data-value');
-        dropdownLabel.textContent = li.textContent;
-        dropdownContainer.classList.remove('open');
-
-        handleSearchInput({ target: input });
-      });
-    });
+    // Native select filter logic
+    const typeSelect = modal.querySelector('#sfp-type-select');
+    typeSelect.addEventListener('change', () => handleSearchInput({ target: input }));
 
     input.addEventListener('input', handleSearchInput);
     input.addEventListener('keydown', handleSearchKeydown);
@@ -768,19 +775,13 @@
     const settingsPanel = modal.querySelector('#sfp-settings-panel');
     const navbarToggle = modal.querySelector('#sfp-toggle-navbar');
 
-    // Auto-close settings panel and custom dropdown when clicking anywhere outside it
+    // Auto-close settings panel when clicking anywhere outside it
     modal.querySelector('.sfp-search-panel').addEventListener('click', (e) => {
       if (settingsPanel.style.display !== 'none') {
         const clickedInsideSettings = settingsPanel.contains(e.target);
         const clickedGear = gearBtn === e.target || gearBtn.contains(e.target);
         if (!clickedInsideSettings && !clickedGear) {
           settingsPanel.style.display = 'none';
-        }
-      }
-
-      if (dropdownContainer && dropdownContainer.classList.contains('open')) {
-        if (!dropdownContainer.contains(e.target)) {
-          dropdownContainer.classList.remove('open');
         }
       }
     });
@@ -856,19 +857,9 @@
     const sp = modal.querySelector('#sfp-settings-panel');
     if (sp) sp.style.display = 'none';
 
-    // Reset dropdown to "All Types"
-    const dropdownLabel = modal.querySelector('#sfp-dropdown-label');
-    const dropdownList = modal.querySelector('#sfp-dropdown-list');
-    if (dropdownLabel) dropdownLabel.textContent = 'All Types';
-    if (dropdownList) {
-      dropdownList.querySelectorAll('li').forEach(li => {
-        if (li.getAttribute('data-value') === 'All') {
-          li.classList.add('selected');
-        } else {
-          li.classList.remove('selected');
-        }
-      });
-    }
+    // Reset filter select to "All Types"
+    const typeSelect = modal.querySelector('#sfp-type-select');
+    if (typeSelect) typeSelect.value = 'All';
 
     const input = modal.querySelector('.sfp-search-input');
     input.value = '';
@@ -917,15 +908,11 @@
     const modal = document.getElementById(MODAL_ID);
     if (!modal) return;
 
-    const input = e.target || modal.querySelector('.sfp-search-input');
-    const dropdownList = modal.querySelector('#sfp-dropdown-list');
+    const input = modal.querySelector('.sfp-search-input');
+    const typeSelect = modal.querySelector('#sfp-type-select');
 
     const query = input.value.toLowerCase().trim();
-    let typeVal = 'All';
-    if (dropdownList) {
-      const selectedLi = dropdownList.querySelector('li.selected');
-      if (selectedLi) typeVal = selectedLi.getAttribute('data-value');
-    }
+    const typeVal = (typeSelect && typeSelect.value) ? typeSelect.value : 'All';
     activeIndex = -1;
 
     let filtered = objectsList;
@@ -937,6 +924,7 @@
         return o.type === typeVal;
       });
     }
+
 
     // 2. Filter by Query (Fuzzy Match)
     if (query) {
@@ -1169,6 +1157,13 @@
         } else {
           destination = 'setup/ui/customsettings.jsp';
         }
+      } else if (obj.type === 'StaticResource') {
+        // Static Resource — open detail page in Classic Setup
+        if (obj.setupId) {
+          destination = `${obj.setupId.substring(0, 15)}?setupid=StaticResources`;
+        } else {
+          destination = 'apexpages/setup/listStaticResource.apexp?setupid=StaticResources';
+        }
       } else if (obj.type === 'Shortcut') {
         destination = obj.setupId;
       } else if (obj.type === 'Profile' || obj.type === 'Permission Set') {
@@ -1196,14 +1191,21 @@
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  // Global Keyboard Shortcut (Option+Space on Mac, Ctrl+Space on Windows to toggle Search Panel)
+  // Global Keyboard Shortcuts:
+  //   Mac:     Option+Space  OR  Cmd+K
+  //   Win/Lin: Ctrl+Space    OR  Ctrl+K
   window.addEventListener('keydown', (e) => {
     const isMac = /Mac|iPhone|iPod|iPad/i.test(navigator.platform || navigator.userAgent);
-    const isHotkey = isMac
-      ? (e.altKey && e.code === 'Space') // Option + Space on Mac
+
+    const isSpaceHotkey = isMac
+      ? (e.altKey && e.code === 'Space')   // Option + Space on Mac
       : (e.ctrlKey && e.code === 'Space'); // Ctrl + Space on Windows/Linux
 
-    if (isHotkey) {
+    const isKHotkey = isMac
+      ? (e.metaKey && e.code === 'KeyK')  // Cmd + K on Mac
+      : (e.ctrlKey && e.code === 'KeyK'); // Ctrl + K on Windows/Linux
+
+    if (isSpaceHotkey || isKHotkey) {
       e.preventDefault();
       const m = document.getElementById(MODAL_ID);
       if (m && m.classList.contains('sfp-modal--open')) {
@@ -1219,7 +1221,8 @@
   const _resolvedTypes = new Map();
 
   async function init() {
-    // 1. Render always-visible Side Panel
+    // 1. Always render Side Panel (Metadata Search button) on every Salesforce page,
+    //    regardless of whether we're on a record page or not.
     initSidePanel();
 
     // 2. Check global setting — if toolbar is disabled, skip rendering
@@ -1240,7 +1243,7 @@
       return;
     }
 
-    // 4. Parse record page details
+    // 4. Parse record page details — toolbar only appears on record pages
     const page = parsePage();
     if (!page) {
       const el = document.getElementById(TOOLBAR_ID);
