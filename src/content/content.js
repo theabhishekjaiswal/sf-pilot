@@ -287,17 +287,24 @@
    */
   async function buildClassicUrl(page) {
     const classicBase = getClassicBase();
-    const retURL = (page && page.recordId) ? `/${page.recordId}` : '/';
+    const recordPath = (page && page.recordId) ? `/${page.recordId}` : '/';
+    // Embed ?nooverride=1 in retURL so Classic view is honored after frontdoor redirect
+    const retURL = `${recordPath}?nooverride=1`;
     try {
       const sid = await bgGetSid();
+      console.log('[SF Pilot] buildClassicUrl — SID obtained:', !!sid, '| classicBase:', classicBase);
       if (sid) {
-        return `${classicBase}/secur/frontdoor.jsp?sid=${encodeURIComponent(sid)}&retURL=${encodeURIComponent(retURL)}&loginType=4`;
+        const url = `${classicBase}/secur/frontdoor.jsp?sid=${encodeURIComponent(sid)}&retURL=${encodeURIComponent(retURL)}`;
+        console.log('[SF Pilot] Classic URL (frontdoor):', url.substring(0, 120) + '...');
+        return url;
       }
     } catch (e) {
-      // fall through to nooverride fallback
+      console.warn('[SF Pilot] bgGetSid failed:', e);
     }
-    // Fallback: nooverride=1 (works when Lightning is NOT the forced default)
-    return `${classicBase}${retURL}?nooverride=1`;
+    // Fallback
+    const fallback = `${classicBase}${retURL}`;
+    console.log('[SF Pilot] Classic URL (fallback nooverride):', fallback);
+    return fallback;
   }
 
 

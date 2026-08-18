@@ -514,6 +514,18 @@ async function handleRequest(msg, sender) {
 // ─── Session ID helper ────────────────────────────────────────────────────────
 
 /**
+ * Message handler for sfGetSid — wraps getSid() for content script use.
+ */
+async function handleGetSid(msg, sender) {
+  const isExt = sender.tab && sender.tab.url && sender.tab.url.startsWith('chrome-extension:');
+  const tabUrl = sender.tab && sender.tab.url && !isExt ? new URL(sender.tab.url) : null;
+  const rawBase = tabUrl ? `${tabUrl.protocol}//${tabUrl.hostname}` : (msg.baseUrl || '');
+  const apiBase = toClassicBase(rawBase);
+  const sid = await getSid(apiBase);
+  return sid; // message handler resolves with the sid value directly
+}
+
+/**
  * Read the Salesforce session cookie (`sid`) for the given origin.
  * chrome.cookies API can read HttpOnly cookies — content scripts cannot.
  * The sid value IS the OAuth Bearer token for the REST API.
