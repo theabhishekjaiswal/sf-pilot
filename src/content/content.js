@@ -94,23 +94,30 @@
   function getClassicBase() {
     const { protocol, hostname } = window.location;
     let h = hostname;
+    
     if (h.includes('.lightning.force.com')) {
       h = h.replace(/\.lightning\.force\.com$/, '.my.salesforce.com');
+    } else if (h.includes('.vf.force.com') || h.includes('.visual.force.com')) {
+      // Strip VF namespace prefix
+      h = h.replace(/--[a-z0-9_]+(\.(?:sandbox|develop|scratch|trial|patch)?\.(?:vf|visual)\.force\.com)$/i, '$1')
+           .replace(/\.(?:vf|visual)\.force\.com$/i, '.my.salesforce.com');
+    } else if (h.includes('.my.site.com')) {
+      h = h.replace(/\.my\.site\.com$/, '.my.salesforce.com');
+    } else if (h.includes('.builder.salesforce-experience.com')) {
+      h = h.replace(/\.builder\.salesforce-experience\.com$/, '.my.salesforce.com');
     } else if (h.includes('.salesforce-setup.com')) {
       h = h.replace(/\.salesforce-setup\.com$/, '.salesforce.com');
     }
+    
     return `${protocol}//${h}`;
   }
 
   function getLightningBase() {
-    const { protocol, hostname } = window.location;
-    if (hostname.includes('.lightning.force.com')) return `${protocol}//${hostname}`;
-    let h = hostname;
-    if (h.includes('.salesforce-setup.com')) {
-      h = h.replace(/\.salesforce-setup\.com$/, '.salesforce.com');
+    const classic = getClassicBase();
+    if (classic.includes('.salesforce.com')) {
+      return classic.replace(/\.salesforce\.com$/, '.lightning.force.com').replace(/\.my\.lightning\.force\.com$/, '.lightning.force.com');
     }
-    h = h.replace(/\.my\.salesforce\.com$/, '.lightning.force.com');
-    return `${protocol}//${h}`;
+    return classic.replace(/\.my\.salesforce\.com$/, '.lightning.force.com');
   }
 
   // ─── Background API bridge ────────────────────────────────────────────────
