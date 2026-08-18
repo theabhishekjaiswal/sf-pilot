@@ -21,8 +21,8 @@
     "https://*.my.salesforce-setup.com/*",
     "https://*.sandbox.my.salesforce-setup.com/*",
     "https://*.develop.my.salesforce-setup.com/*",
-    "https://*.siteforce.com/*",
-    "https://*.my.site.com/*"
+    "https://*.my.site.com/*",
+    "https://*.salesforce-experience.com/*"
   ],
   "background": {
     "service_worker": "src/background/background.js"
@@ -42,8 +42,8 @@
         "https://*.my.salesforce-setup.com/*",
         "https://*.sandbox.my.salesforce-setup.com/*",
         "https://*.develop.my.salesforce-setup.com/*",
-        "https://*.siteforce.com/*",
-        "https://*.my.site.com/*"
+        "https://*.my.site.com/*",
+        "https://*.salesforce-experience.com/*"
       ],
       "js": [
         "src/content/content.js"
@@ -75,8 +75,8 @@
         "https://*.my.salesforce-setup.com/*",
         "https://*.sandbox.my.salesforce-setup.com/*",
         "https://*.develop.my.salesforce-setup.com/*",
-        "https://*.siteforce.com/*",
-        "https://*.my.site.com/*"
+        "https://*.my.site.com/*",
+        "https://*.salesforce-experience.com/*"
       ]
     }
   ],
