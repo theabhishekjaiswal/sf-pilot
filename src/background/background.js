@@ -17,8 +17,10 @@
 
 // Per-hostname API version cache (keyed by Classic hostname)
 const apiVersionCache = new Map();
-// Cache of sObject lists per hostname
+// Cache of sObject lists — keyed by Org ID to avoid duplicate entries for Classic/Lightning/VF domains
 const objectsCache = new Map();
+// Org ID cache (Classic hostname → orgId), to avoid repeat lookups
+const orgIdCache = new Map();
 
 // ─── Message handler ──────────────────────────────────────────────────────────
 
@@ -50,12 +52,18 @@ async function handleGetObjects(msg, sender) {
   const tabUrl = sender.tab && sender.tab.url && !isExt ? new URL(sender.tab.url) : null;
   const rawBase = tabUrl ? `${tabUrl.protocol}//${tabUrl.hostname}` : (msg.baseUrl || '');
   const apiBase = toClassicBase(rawBase);
-  const hostname = new URL(apiBase).hostname;
-  const cacheKey = `sf_objects_${hostname}`;
+
+  const sid = await getSid(apiBase);
+  const headers = { Accept: 'application/json' };
+  if (sid) headers['Authorization'] = `Bearer ${sid}`;
+
+  // Use Org ID as the cache key so Classic/Lightning/VF pages all share one cache entry
+  const orgId = await getOrgId(apiBase, headers);
+  const cacheKey = orgId ? `sf_objects_org_${orgId}` : `sf_objects_${new URL(apiBase).hostname}`;
 
   if (!msg.forceRefresh) {
-    if (objectsCache.has(hostname)) {
-      return objectsCache.get(hostname);
+    if (objectsCache.has(cacheKey)) {
+      return objectsCache.get(cacheKey);
     }
 
     // Check persistent cache to avoid 8-12s API load time
@@ -64,17 +72,13 @@ async function handleGetObjects(msg, sender) {
       const now = Date.now();
       // Use cache if it's less than 24 hours old
       if (stored[cacheKey] && stored[`${cacheKey}_time`] && (now - stored[`${cacheKey}_time`] < 24 * 60 * 60 * 1000)) {
-        objectsCache.set(hostname, stored[cacheKey]);
+        objectsCache.set(cacheKey, stored[cacheKey]);
         return stored[cacheKey];
       }
     } catch (e) {
       console.warn('[SF Pilot] Cache read failed:', e);
     }
   }
-
-  const sid = await getSid(apiBase);
-  const headers = { Accept: 'application/json' };
-  if (sid) headers['Authorization'] = `Bearer ${sid}`;
 
   const ver = await getApiVersion(apiBase, headers);
 
@@ -292,8 +296,28 @@ async function handleGetObjects(msg, sender) {
     return [];
   })();
 
+  // 12. Fetch Static Resources (Parallel)
+  const staticResourcesPromise = (async () => {
+    try {
+      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+StaticResource+WHERE+NamespacePrefix=null`;
+      const resp = await fetch(qUrl, { headers, signal: controller.signal });
+      if (resp.ok) {
+        const d = await resp.json();
+        return (d.records || []).map(r => ({
+          label: r.Name,
+          name: r.Name,
+          type: 'StaticResource',
+          setupId: r.Id
+        }));
+      }
+    } catch (e) {
+      console.warn('[SF Pilot] Static Resources fetch failed:', e.message);
+    }
+    return [];
+  })();
+
   try {
-    const [_, data, classes, triggers, pages, labels, settings, flows, tabs, profiles, permissionSets] = await Promise.all([
+    const [_, data, classes, triggers, pages, labels, settings, flows, tabs, profiles, permissionSets, staticResources] = await Promise.all([
       toolingPromise,
       sobjectsPromise,
       classesPromise,
@@ -304,7 +328,8 @@ async function handleGetObjects(msg, sender) {
       flowsPromise,
       tabsPromise,
       profilesPromise,
-      permissionSetsPromise
+      permissionSetsPromise,
+      staticResourcesPromise
     ]);
 
     const unifiedList = [];
@@ -340,7 +365,7 @@ async function handleGetObjects(msg, sender) {
       unifiedList.push(...sobjects);
     }
 
-    // Add Classes, Triggers, Pages, Labels, Settings, Flows, Tabs
+    // Add Classes, Triggers, Pages, Labels, Settings, Flows, Tabs, Profiles, PermSets, StaticResources
     unifiedList.push(...classes);
     unifiedList.push(...triggers);
     unifiedList.push(...pages);
@@ -350,11 +375,12 @@ async function handleGetObjects(msg, sender) {
     unifiedList.push(...tabs);
     unifiedList.push(...profiles);
     unifiedList.push(...permissionSets);
+    unifiedList.push(...staticResources);
 
     // Sort alphabetically by label name
     unifiedList.sort((a, b) => a.label.localeCompare(b.label));
 
-    objectsCache.set(hostname, unifiedList);
+    objectsCache.set(cacheKey, unifiedList);
     
     // Save to persistent cache
     try {
@@ -392,16 +418,47 @@ async function handleGetSid(msg, sender) {
  *   myorg.lightning.force.com           → myorg.my.salesforce.com
  *   myorg.my.salesforce.com             → unchanged
  *   myorg--uat.sandbox.lightning.force.com → myorg--uat.sandbox.my.salesforce.com
+ *   myorg.vf.force.com / myorg.visual.force.com → myorg.my.salesforce.com
  */
 function toClassicBase(urlOrString) {
   const u = typeof urlOrString === 'string' ? new URL(urlOrString) : urlOrString;
   let hostname = u.hostname;
   if (hostname.includes('.lightning.force.com')) {
     hostname = hostname.replace(/\.lightning\.force\.com$/, '.my.salesforce.com');
+  } else if (hostname.includes('.vf.force.com') || hostname.includes('.visual.force.com')) {
+    // VF page domain — strip VF prefix to get the Classic base
+    hostname = hostname.replace(/\.vf\.force\.com$/, '.my.salesforce.com')
+                       .replace(/\.visual\.force\.com$/, '.my.salesforce.com');
   } else if (hostname.includes('.salesforce-setup.com')) {
     hostname = hostname.replace(/\.salesforce-setup\.com$/, '.salesforce.com');
   }
   return `${u.protocol}//${hostname}`;
+}
+
+/**
+ * Fetch and cache the 18-character Org ID for this Salesforce org.
+ * This is used as a stable, domain-agnostic cache key so Classic, Lightning,
+ * and VF page requests for the same org all share one metadata cache entry.
+ */
+async function getOrgId(apiBase, headers) {
+  const hostname = new URL(apiBase).hostname;
+  if (orgIdCache.has(hostname)) return orgIdCache.get(hostname);
+  try {
+    const ver = await getApiVersion(apiBase, headers);
+    const resp = await fetch(`${apiBase}/services/data/${ver}/query?q=SELECT+Id+FROM+Organization+LIMIT+1`, { headers });
+    if (resp.ok) {
+      const d = await resp.json();
+      if (d && d.records && d.records.length > 0) {
+        const orgId = d.records[0].Id;
+        orgIdCache.set(hostname, orgId);
+        return orgId;
+      }
+    }
+  } catch (e) {
+    console.warn('[SF Pilot] Org ID lookup failed:', e.message);
+  }
+  orgIdCache.set(hostname, null); // Cache null to avoid repeat failures
+  return null;
 }
 
 // ─── Core request handler ─────────────────────────────────────────────────────

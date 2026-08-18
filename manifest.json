@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Salesforce Pilot",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Supercharge your Salesforce experience! The ultimate navigation toolbar and blazing fast metadata search.",
   "permissions": [
     "scripting",
@@ -20,7 +20,9 @@
     "https://*.salesforce-setup.com/*",
     "https://*.my.salesforce-setup.com/*",
     "https://*.sandbox.my.salesforce-setup.com/*",
-    "https://*.develop.my.salesforce-setup.com/*"
+    "https://*.develop.my.salesforce-setup.com/*",
+    "https://*.siteforce.com/*",
+    "https://*.my.site.com/*"
   ],
   "background": {
     "service_worker": "src/background/background.js"
@@ -39,7 +41,9 @@
         "https://*.salesforce-setup.com/*",
         "https://*.my.salesforce-setup.com/*",
         "https://*.sandbox.my.salesforce-setup.com/*",
-        "https://*.develop.my.salesforce-setup.com/*"
+        "https://*.develop.my.salesforce-setup.com/*",
+        "https://*.siteforce.com/*",
+        "https://*.my.site.com/*"
       ],
       "js": [
         "src/content/content.js"
@@ -70,7 +74,9 @@
         "https://*.salesforce-setup.com/*",
         "https://*.my.salesforce-setup.com/*",
         "https://*.sandbox.my.salesforce-setup.com/*",
-        "https://*.develop.my.salesforce-setup.com/*"
+        "https://*.develop.my.salesforce-setup.com/*",
+        "https://*.siteforce.com/*",
+        "https://*.my.site.com/*"
       ]
     }
   ],
