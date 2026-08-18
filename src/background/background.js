@@ -320,8 +320,28 @@ async function handleGetObjects(msg, sender) {
     return [];
   })();
 
+  // 13. Fetch Active Salesforce Licensed Users (Parallel)
+  const usersPromise = (async () => {
+    try {
+      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name,Username+FROM+User+WHERE+IsActive=true+AND+Profile.UserLicense.Name='Salesforce'`;
+      const resp = await fetch(qUrl, { headers, signal: controller.signal });
+      if (resp.ok) {
+        const d = await resp.json();
+        return (d.records || []).map(r => ({
+          label: r.Name,
+          name: r.Username,
+          type: 'User',
+          setupId: r.Id
+        }));
+      }
+    } catch (e) {
+      console.warn('[SF Pilot] Users fetch failed:', e.message);
+    }
+    return [];
+  })();
+
   try {
-    const [_, data, classes, triggers, pages, labels, settings, flows, tabs, profiles, permissionSets, staticResources] = await Promise.all([
+    const [_, data, classes, triggers, pages, labels, settings, flows, tabs, profiles, permissionSets, staticResources, users] = await Promise.all([
       toolingPromise,
       sobjectsPromise,
       classesPromise,
@@ -333,7 +353,8 @@ async function handleGetObjects(msg, sender) {
       tabsPromise,
       profilesPromise,
       permissionSetsPromise,
-      staticResourcesPromise
+      staticResourcesPromise,
+      usersPromise
     ]);
 
     const unifiedList = [];
@@ -380,6 +401,7 @@ async function handleGetObjects(msg, sender) {
     unifiedList.push(...profiles);
     unifiedList.push(...permissionSets);
     unifiedList.push(...staticResources);
+    unifiedList.push(...users);
 
     // Sort alphabetically by label name
     unifiedList.sort((a, b) => a.label.localeCompare(b.label));

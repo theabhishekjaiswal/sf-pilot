@@ -762,6 +762,12 @@
   border: 1px solid rgba(251, 113, 76, 0.22);
 }
 
+.sfp-tag--user {
+  background: rgba(234, 179, 8, 0.12);
+  color: #eab308;
+  border: 1px solid rgba(234, 179, 8, 0.22);
+}
+
 /* ─── Metadata Search — Native Type Select ────────────────────────────────── */
 
 .sfp-type-select {

@@ -739,6 +739,7 @@
             <option value="Trigger">Apex Trigger</option>
             <option value="Profile">Profile</option>
             <option value="Permission Set">Permission Set</option>
+            <option value="User">User</option>
           </select>
         </div>
         <div class="sfp-results-list"></div>
@@ -1175,6 +1176,8 @@
         destination = obj.setupId;
       } else if (obj.type === 'Profile' || obj.type === 'Permission Set') {
         destination = obj.setupId;
+      } else if (obj.type === 'User') {
+        destination = `${obj.setupId}?noredirect=1`;
       } else {
         // Apex Class, Apex Trigger, Visualforce Page, Custom Label setup detail page
         destination = obj.setupId;
