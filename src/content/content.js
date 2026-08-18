@@ -141,6 +141,19 @@
     });
   }
 
+  // Fetch the Salesforce session ID (sid cookie) via the background worker
+  function bgGetSid() {
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage(
+        { type: 'sfGetSid', baseUrl: getApiBaseUrl() },
+        (resp) => {
+          if (chrome.runtime.lastError) return resolve(null);
+          resolve((resp && resp.ok && resp.sid) ? resp.sid : null);
+        }
+      );
+    });
+  }
+
   // ─── Page / record detection ──────────────────────────────────────────────
 
   function objectTypeFromId(id) {
@@ -259,6 +272,32 @@
       return `${classicBase}/${page.recordId}?nooverride=1`;
     }
     return `${classicBase}?nooverride=1`;
+  }
+
+  /**
+   * Build a Classic URL that actually stays in Classic.
+   *
+   * Why frontdoor.jsp?
+   *   When a Salesforce org has Lightning as the default UI, ANY direct navigation
+   *   to my.salesforce.com/{recordId} gets server-side redirected to Lightning —
+   *   even with ?nooverride=1 — before the browser can process the parameter.
+   *   frontdoor.jsp is Salesforce's own cross-domain login endpoint: it authenticates
+   *   via the Bearer SID, then follows the retURL in Classic mode, bypassing all
+   *   Lightning redirect rules entirely.
+   */
+  async function buildClassicUrl(page) {
+    const classicBase = getClassicBase();
+    const retURL = (page && page.recordId) ? `/${page.recordId}` : '/';
+    try {
+      const sid = await bgGetSid();
+      if (sid) {
+        return `${classicBase}/secur/frontdoor.jsp?sid=${encodeURIComponent(sid)}&retURL=${encodeURIComponent(retURL)}&loginType=4`;
+      }
+    } catch (e) {
+      // fall through to nooverride fallback
+    }
+    // Fallback: nooverride=1 (works when Lightning is NOT the forced default)
+    return `${classicBase}${retURL}?nooverride=1`;
   }
 
 
@@ -409,7 +448,10 @@
       variant: 'classic',
       active: false,
       disabled: !onLEX,
-      onClick: () => openClassicUrl(switchToClassicUrl(page)),
+      onClick: async () => {
+        const url = await buildClassicUrl(page);
+        openClassicUrl(url);
+      },
     }));
 
     // Lightning button
