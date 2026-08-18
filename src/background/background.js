@@ -423,17 +423,27 @@ async function handleGetSid(msg, sender) {
 function toClassicBase(urlOrString) {
   const u = typeof urlOrString === 'string' ? new URL(urlOrString) : urlOrString;
   let hostname = u.hostname;
+  
   if (hostname.includes('.lightning.force.com')) {
     hostname = hostname.replace(/\.lightning\.force\.com$/, '.my.salesforce.com');
   } else if (hostname.includes('.vf.force.com') || hostname.includes('.visual.force.com')) {
-    // VF page domain — strip VF prefix to get the Classic base
-    hostname = hostname.replace(/\.vf\.force\.com$/, '.my.salesforce.com')
-      .replace(/\.visual\.force\.com$/, '.my.salesforce.com');
+    // Strip VF namespace prefix (e.g. org--c.develop.vf.force.com -> org.develop.my.salesforce.com)
+    // The namespace is the part immediately preceding the environment suffix or .vf.force.com
+    hostname = hostname.replace(/--[a-z0-9_]+(\.(?:sandbox|develop|scratch|trial|patch)?\.(?:vf|visual)\.force\.com)$/i, '$1')
+                       .replace(/\.(?:vf|visual)\.force\.com$/i, '.my.salesforce.com');
+  } else if (hostname.includes('.my.site.com')) {
+    // Digital Experience (e.g. org.develop.my.site.com -> org.develop.my.salesforce.com)
+    hostname = hostname.replace(/\.my\.site\.com$/, '.my.salesforce.com');
+  } else if (hostname.includes('.builder.salesforce-experience.com')) {
+    // Experience Builder
+    hostname = hostname.replace(/\.builder\.salesforce-experience\.com$/, '.my.salesforce.com');
   } else if (hostname.includes('.salesforce-setup.com')) {
     hostname = hostname.replace(/\.salesforce-setup\.com$/, '.salesforce.com');
   }
+  
   return `${u.protocol}//${hostname}`;
 }
+
 
 /**
  * Fetch and cache the 18-character Org ID for this Salesforce org.
