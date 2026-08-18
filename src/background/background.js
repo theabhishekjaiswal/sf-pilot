@@ -19,6 +19,7 @@
 const apiVersionCache = new Map();
 // Cache of sObject lists — keyed by Org ID to avoid duplicate entries for Classic/Lightning/VF domains
 const objectsCache = new Map();
+const pendingFetches = new Map();
 // Org ID cache (Classic hostname → orgId), to avoid repeat lookups
 
 
@@ -84,11 +85,18 @@ async function handleGetObjects(msg, sender) {
     }
   }
 
-  const ver = await getApiVersion(apiBase, headers);
+  if (pendingFetches.has(cacheKey)) {
+    return await pendingFetches.get(cacheKey);
+  }
 
-  const customObjectIds = new Map();
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s total timeout
+  const fetchPromise = (async () => {
+    const ver = await getApiVersion(apiBase, headers);
+
+    const customObjectIds = new Map();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s total timeout
+    
+    try {
 
   // 1. Tooling API query for CustomObject 01I Setup IDs (Parallel)
   const toolingPromise = (async () => {
@@ -419,13 +427,17 @@ async function handleGetObjects(msg, sender) {
     }
 
     return unifiedList;
-  } catch (e) {
-    throw e;
-  } finally {
-    clearTimeout(timeoutId);
-  }
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  })();
 
-  return [];
+  pendingFetches.set(cacheKey, fetchPromise);
+  try {
+    return await fetchPromise;
+  } finally {
+    pendingFetches.delete(cacheKey);
+  }
 }
 
 async function handleGetSid(msg, sender) {
