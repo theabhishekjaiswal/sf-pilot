@@ -49,11 +49,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 async function handleGetObjects(msg, sender) {
   const isExt = sender.tab && sender.tab.url && sender.tab.url.startsWith('chrome-extension:');
-  const tabUrl = sender.tab && sender.tab.url && !isExt ? new URL(sender.tab.url) : null;
-  const rawBase = tabUrl ? `${tabUrl.protocol}//${tabUrl.hostname}` : (msg.baseUrl || '');
-  const apiBase = toClassicBase(rawBase);
+  const tabUrl = sender.tab && sender.tab.url && !isExt ? sender.tab.url : null;
+  const rawUrl = tabUrl || msg.baseUrl;
+  
+  const session = await resolveApiSession(rawUrl);
+  if (!session) throw new Error("Could not resolve Salesforce API session for this domain.");
+  
+  const apiBase = session.apiBase;
+  const sid = session.sid;
 
-  const sid = await getSid(apiBase);
   const headers = { Accept: 'application/json' };
   if (sid) headers['Authorization'] = `Bearer ${sid}`;
 
@@ -403,37 +407,81 @@ async function handleGetObjects(msg, sender) {
 }
 
 async function handleGetSid(msg, sender) {
-  const tabUrl = sender.tab && sender.tab.url ? new URL(sender.tab.url) : null;
-  const rawBase = tabUrl ? `${tabUrl.protocol}//${tabUrl.hostname}` : (msg.baseUrl || '');
-  const apiBase = toClassicBase(rawBase);
-  return await getSid(apiBase);
+  const tabUrl = sender.tab && sender.tab.url ? sender.tab.url : null;
+  const rawUrl = tabUrl || msg.baseUrl;
+  const session = await resolveApiSession(rawUrl);
+  return session ? session.sid : null;
 }
 
 // ─── Domain normalization ─────────────────────────────────────────────────────
 
 /**
- * Always resolve to the Classic (my.salesforce.com) base URL for API calls.
- * The Salesforce REST API session cookie lives on the Classic domain.
- *
- *   myorg.lightning.force.com           → myorg.my.salesforce.com
- *   myorg.my.salesforce.com             → unchanged
- *   myorg--uat.sandbox.lightning.force.com → myorg--uat.sandbox.my.salesforce.com
- *   myorg.vf.force.com / myorg.visual.force.com → myorg.my.salesforce.com
+ * Reliably finds the Salesforce API session cookie and base URL for ANY Salesforce tab,
+ * without relying on brittle domain regexes (which break on complex sandbox/builder domains).
+ * 
+ * Strategy:
+ * 1. Read the 'sid' cookie for the current tab's exact URL (e.g. VF or Builder).
+ * 2. Extract the Org ID from that sid (first 15 chars before the !).
+ * 3. Search ALL cookies to find the master API session (.salesforce.com) for that Org ID.
+ * 4. Fallback: Extract the tenant prefix from the URL and fuzzy-match the cookie domain.
  */
-function toClassicBase(urlOrString) {
-  const u = typeof urlOrString === 'string' ? new URL(urlOrString) : urlOrString;
-  let hostname = u.hostname;
-  if (hostname.includes('.lightning.force.com')) {
-    hostname = hostname.replace(/\.lightning\.force\.com$/, '.my.salesforce.com');
-  } else if (hostname.includes('.vf.force.com') || hostname.includes('.visual.force.com')) {
-    // VF page domain — strip VF prefix to get the Classic base
-    hostname = hostname.replace(/\.vf\.force\.com$/, '.my.salesforce.com')
-      .replace(/\.visual\.force\.com$/, '.my.salesforce.com');
-  } else if (hostname.includes('.salesforce-setup.com')) {
-    hostname = hostname.replace(/\.salesforce-setup\.com$/, '.salesforce.com');
+async function resolveApiSession(rawUrl) {
+  if (!rawUrl) return null;
+  const urlObj = new URL(rawUrl);
+  
+  let localSid = null;
+  let orgId = null;
+  try {
+    const localCookie = await chrome.cookies.get({ url: rawUrl, name: 'sid' });
+    if (localCookie && localCookie.value) {
+      localSid = localCookie.value;
+      orgId = localSid.split('!')[0];
+    }
+  } catch (e) {}
+
+  const allSids = await chrome.cookies.getAll({ name: 'sid' });
+  
+  // 1. Exact match by Org ID (Bulletproof)
+  if (orgId && orgId.startsWith('00D')) {
+    for (const cookie of allSids) {
+      if (cookie.value.startsWith(orgId) && cookie.domain.includes('salesforce.com')) {
+        return {
+          apiBase: `https://${cookie.domain.replace(/^\./, '')}`,
+          sid: cookie.value
+        };
+      }
+    }
   }
-  return `${u.protocol}//${hostname}`;
+
+  // 2. Fuzzy match by tenant prefix
+  // "orgfarm-dev.develop.my.site.com" -> "orgfarm-dev"
+  // "org--c.vf.force.com" -> "org"
+  const firstSegment = urlObj.hostname.split('.')[0];
+  const tenant = firstSegment.split('--')[0]; 
+  
+  if (tenant && tenant.length > 2) {
+    const matchingCookies = allSids.filter(c => 
+      c.domain.includes('salesforce.com') && 
+      (c.domain.startsWith(tenant) || c.domain.startsWith('.' + tenant))
+    );
+    
+    if (matchingCookies.length > 0) {
+      // Prefer .my.salesforce.com if multiple match
+      const bestMatch = matchingCookies.find(c => c.domain.includes('.my.salesforce.com')) || matchingCookies[0];
+      return {
+        apiBase: `https://${bestMatch.domain.replace(/^\./, '')}`,
+        sid: bestMatch.value
+      };
+    }
+  }
+
+  // 3. Absolute fallback
+  return {
+    apiBase: urlObj.origin,
+    sid: localSid
+  };
 }
+
 
 /**
  * Fetch and cache the 18-character Org ID for this Salesforce org.
@@ -467,17 +515,15 @@ async function handleRequest(msg, sender) {
   // Derive the tab's origin (most reliable), fall back to message payload
   // Ignore chrome-extension:// origins so our own internal pages can provide their own msg.baseUrl
   const isExt = sender.tab && sender.tab.url && sender.tab.url.startsWith('chrome-extension:');
-  const tabUrl = sender.tab && sender.tab.url && !isExt ? new URL(sender.tab.url) : null;
-  const rawBase = tabUrl
-    ? `${tabUrl.protocol}//${tabUrl.hostname}`
-    : (msg.baseUrl || '');
+  const tabUrl = sender.tab && sender.tab.url && !isExt ? sender.tab.url : null;
+  const rawUrl = tabUrl || msg.baseUrl;
 
-  // ALWAYS use the Classic/My-Domain base for API calls regardless of which
-  // domain the tab is currently on (Lightning or Classic).
-  const apiBase = toClassicBase(rawBase);
+  // Resolve API Base and Session ID using the robust cookie method
+  const session = await resolveApiSession(rawUrl);
+  if (!session) throw new Error("Could not resolve Salesforce API session for this domain.");
 
-  // Get session ID from the Classic domain cookie
-  const sid = await getSid(apiBase);
+  const apiBase = session.apiBase;
+  const sid = session.sid;
 
   const headers = { Accept: 'application/json' };
   if (sid) headers['Authorization'] = `Bearer ${sid}`;
@@ -487,8 +533,9 @@ async function handleRequest(msg, sender) {
     const ver = await getApiVersion(apiBase, headers);
     url = `${apiBase}/services/data/${ver}/query?q=${encodeURIComponent(msg.query)}`;
   } else {
-    // sfFetch: use the URL from content.js but rewrite to Classic domain
-    url = toClassicBase(msg.url).replace(/\/\/$/, '') + new URL(msg.url).pathname + new URL(msg.url).search;
+    // sfFetch: rewrite the target URL to the master API base
+    const parsedTarget = new URL(msg.url);
+    url = `${apiBase}${parsedTarget.pathname}${parsedTarget.search}`;
   }
 
   const fetchOptions = {
@@ -512,24 +559,7 @@ async function handleRequest(msg, sender) {
 }
 
 
-/**
- * Read the Salesforce session cookie (`sid`) for the given origin.
- * chrome.cookies API can read HttpOnly cookies — content scripts cannot.
- * The sid value IS the OAuth Bearer token for the REST API.
- */
-async function getSid(baseUrl) {
-  try {
-    // 1. Try to get sid from Classic base
-    let cookie = await chrome.cookies.get({ url: baseUrl, name: 'sid' });
-    if (cookie && cookie.value) return cookie.value;
 
-    // 2. Try to get sid from Lightning base (fallback)
-    const lightningBase = baseUrl.replace(/\.my\.salesforce\.com$/, '.lightning.force.com');
-    cookie = await chrome.cookies.get({ url: lightningBase, name: 'sid' });
-    if (cookie && cookie.value) return cookie.value;
-  } catch { }
-  return null;
-}
 
 // ─── API version discovery ────────────────────────────────────────────────────
 
