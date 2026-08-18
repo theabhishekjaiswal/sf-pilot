@@ -275,9 +275,9 @@
   function buildClassicUrl(page) {
     const classicBase = getClassicBase();
     if (page && page.recordId) {
-      return `${classicBase}/${page.recordId}`;
+      return `${classicBase}/${page.recordId}?noredirect=1`;
     }
-    return classicBase;
+    return `${classicBase}?noredirect=1`;
   }
 
 
