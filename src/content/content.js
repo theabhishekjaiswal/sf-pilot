@@ -274,37 +274,12 @@
     return `${classicBase}?nooverride=1`;
   }
 
-  /**
-   * Build a Classic URL that actually stays in Classic.
-   *
-   * Why frontdoor.jsp?
-   *   When a Salesforce org has Lightning as the default UI, ANY direct navigation
-   *   to my.salesforce.com/{recordId} gets server-side redirected to Lightning —
-   *   even with ?nooverride=1 — before the browser can process the parameter.
-   *   frontdoor.jsp is Salesforce's own cross-domain login endpoint: it authenticates
-   *   via the Bearer SID, then follows the retURL in Classic mode, bypassing all
-   *   Lightning redirect rules entirely.
-   */
-  async function buildClassicUrl(page) {
+  function buildClassicUrl(page) {
     const classicBase = getClassicBase();
-    const recordPath = (page && page.recordId) ? `/${page.recordId}` : '/';
-    // Embed ?nooverride=1 in retURL so Classic view is honored after frontdoor redirect
-    const retURL = `${recordPath}?nooverride=1`;
-    try {
-      const sid = await bgGetSid();
-      console.log('[SF Pilot] buildClassicUrl — SID obtained:', !!sid, '| classicBase:', classicBase);
-      if (sid) {
-        const url = `${classicBase}/secur/frontdoor.jsp?sid=${encodeURIComponent(sid)}&retURL=${encodeURIComponent(retURL)}`;
-        console.log('[SF Pilot] Classic URL (frontdoor):', url.substring(0, 120) + '...');
-        return url;
-      }
-    } catch (e) {
-      console.warn('[SF Pilot] bgGetSid failed:', e);
+    if (page && page.recordId) {
+      return `${classicBase}/${page.recordId}`;
     }
-    // Fallback
-    const fallback = `${classicBase}${retURL}`;
-    console.log('[SF Pilot] Classic URL (fallback nooverride):', fallback);
-    return fallback;
+    return classicBase;
   }
 
 
@@ -455,10 +430,7 @@
       variant: 'classic',
       active: false,
       disabled: !onLEX,
-      onClick: async () => {
-        const url = await buildClassicUrl(page);
-        openClassicUrl(url);
-      },
+      onClick: () => openClassicUrl(buildClassicUrl(page)),
     }));
 
     // Lightning button
