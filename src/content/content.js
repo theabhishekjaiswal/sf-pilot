@@ -699,6 +699,7 @@
   let objectsList = [];
   let filteredObjects = [];
   let activeIndex = -1;
+  let preloadedObjectsPromise = null;
 
   function initSidePanel() {
     if (document.getElementById(SIDE_BTN_ID)) return;
@@ -767,6 +768,13 @@
     modal.addEventListener('click', (e) => {
       if (e.target === modal) closeSearchModal();
     });
+
+    // Start silent preloading of metadata to ensure instant search launch
+    if (objectsList.length === 0 && !preloadedObjectsPromise) {
+      preloadedObjectsPromise = getObjectsList().then(list => {
+        objectsList = [...SHORTCUTS, ...list];
+      }).catch(e => console.warn('[SF Pilot] Preload failed:', e));
+    }
 
     const input = modal.querySelector('.sfp-search-input');
 
@@ -876,8 +884,23 @@
     activeIndex = -1;
     filteredObjects = [];
 
-    // Lazy load objects list if not cached locally
-    if (objectsList.length === 0) {
+    // Lazy load or wait for preload if not cached locally
+    if (objectsList.length > 0) {
+      // 99% of the time: Data is already preloaded! Render instantly.
+      filteredObjects = objectsList.slice(0, 50);
+      renderResults();
+    } else if (preloadedObjectsPromise) {
+      // 1% of the time: The user hit Cmd+K immediately after page load.
+      renderLoading('Waiting for background preload...');
+      try {
+        await preloadedObjectsPromise;
+        filteredObjects = objectsList.slice(0, 50);
+        renderResults();
+      } catch (e) {
+        renderError('Failed to load sObjects list.');
+      }
+    } else {
+      // Absolute fallback if preload somehow didn't start
       renderLoading();
       try {
         const list = await getObjectsList();
@@ -887,9 +910,6 @@
       } catch (e) {
         renderError('Failed to load sObjects list.');
       }
-    } else {
-      filteredObjects = objectsList.slice(0, 50);
-      renderResults();
     }
   }
 
