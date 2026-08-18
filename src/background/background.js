@@ -20,7 +20,7 @@ const apiVersionCache = new Map();
 // Cache of sObject lists — keyed by Org ID to avoid duplicate entries for Classic/Lightning/VF domains
 const objectsCache = new Map();
 // Org ID cache (Classic hostname → orgId), to avoid repeat lookups
-const orgIdCache = new Map();
+
 
 // ─── Message handler ──────────────────────────────────────────────────────────
 
@@ -62,7 +62,7 @@ async function handleGetObjects(msg, sender) {
   if (sid) headers['Authorization'] = `Bearer ${sid}`;
 
   // Use Org ID as the cache key so Classic/Lightning/VF pages all share one cache entry
-  const orgId = await getOrgId(apiBase, headers);
+  const orgId = session.orgId;
   const cacheKey = orgId ? `sf_objects_org_${orgId}` : `sf_objects_${new URL(apiBase).hostname}`;
 
   if (!msg.forceRefresh) {
@@ -447,7 +447,8 @@ async function resolveApiSession(rawUrl) {
       if (cookie.value.startsWith(orgId) && cookie.domain.includes('salesforce.com')) {
         return {
           apiBase: `https://${cookie.domain.replace(/^\./, '')}`,
-          sid: cookie.value
+          sid: cookie.value,
+          orgId: orgId
         };
       }
     }
@@ -470,7 +471,8 @@ async function resolveApiSession(rawUrl) {
       const bestMatch = matchingCookies.find(c => c.domain.includes('.my.salesforce.com')) || matchingCookies[0];
       return {
         apiBase: `https://${bestMatch.domain.replace(/^\./, '')}`,
-        sid: bestMatch.value
+        sid: bestMatch.value,
+        orgId: bestMatch.value.split('!')[0]
       };
     }
   }
@@ -478,36 +480,13 @@ async function resolveApiSession(rawUrl) {
   // 3. Absolute fallback
   return {
     apiBase: urlObj.origin,
-    sid: localSid
+    sid: localSid,
+    orgId: localSid ? localSid.split('!')[0] : null
   };
 }
 
 
-/**
- * Fetch and cache the 18-character Org ID for this Salesforce org.
- * This is used as a stable, domain-agnostic cache key so Classic, Lightning,
- * and VF page requests for the same org all share one metadata cache entry.
- */
-async function getOrgId(apiBase, headers) {
-  const hostname = new URL(apiBase).hostname;
-  if (orgIdCache.has(hostname)) return orgIdCache.get(hostname);
-  try {
-    const ver = await getApiVersion(apiBase, headers);
-    const resp = await fetch(`${apiBase}/services/data/${ver}/query?q=SELECT+Id+FROM+Organization+LIMIT+1`, { headers });
-    if (resp.ok) {
-      const d = await resp.json();
-      if (d && d.records && d.records.length > 0) {
-        const orgId = d.records[0].Id;
-        orgIdCache.set(hostname, orgId);
-        return orgId;
-      }
-    }
-  } catch (e) {
-    console.warn('[SF Pilot] Org ID lookup failed:', e.message);
-  }
-  orgIdCache.set(hostname, null); // Cache null to avoid repeat failures
-  return null;
-}
+
 
 // ─── Core request handler ─────────────────────────────────────────────────────
 
