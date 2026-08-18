@@ -94,23 +94,30 @@
   function getClassicBase() {
     const { protocol, hostname } = window.location;
     let h = hostname;
+    
     if (h.includes('.lightning.force.com')) {
       h = h.replace(/\.lightning\.force\.com$/, '.my.salesforce.com');
+    } else if (h.includes('.vf.force.com') || h.includes('.visual.force.com')) {
+      // Strip VF namespace prefix
+      h = h.replace(/--[a-z0-9_]+(\.(?:sandbox|develop|scratch|trial|patch)?\.(?:vf|visual)\.force\.com)$/i, '$1')
+           .replace(/\.(?:vf|visual)\.force\.com$/i, '.my.salesforce.com');
+    } else if (h.includes('.my.site.com')) {
+      h = h.replace(/\.my\.site\.com$/, '.my.salesforce.com');
+    } else if (h.includes('.builder.salesforce-experience.com')) {
+      h = h.replace(/\.builder\.salesforce-experience\.com$/, '.my.salesforce.com');
     } else if (h.includes('.salesforce-setup.com')) {
       h = h.replace(/\.salesforce-setup\.com$/, '.salesforce.com');
     }
+    
     return `${protocol}//${h}`;
   }
 
   function getLightningBase() {
-    const { protocol, hostname } = window.location;
-    if (hostname.includes('.lightning.force.com')) return `${protocol}//${hostname}`;
-    let h = hostname;
-    if (h.includes('.salesforce-setup.com')) {
-      h = h.replace(/\.salesforce-setup\.com$/, '.salesforce.com');
+    const classic = getClassicBase();
+    if (classic.includes('.salesforce.com')) {
+      return classic.replace(/\.salesforce\.com$/, '.lightning.force.com').replace(/\.my\.lightning\.force\.com$/, '.lightning.force.com');
     }
-    h = h.replace(/\.my\.salesforce\.com$/, '.lightning.force.com');
-    return `${protocol}//${h}`;
+    return classic.replace(/\.my\.salesforce\.com$/, '.lightning.force.com');
   }
 
   // ─── Background API bridge ────────────────────────────────────────────────
@@ -692,6 +699,7 @@
   let objectsList = [];
   let filteredObjects = [];
   let activeIndex = -1;
+  let preloadedObjectsPromise = null;
 
   function initSidePanel() {
     if (document.getElementById(SIDE_BTN_ID)) return;
@@ -732,6 +740,7 @@
             <option value="Trigger">Apex Trigger</option>
             <option value="Profile">Profile</option>
             <option value="Permission Set">Permission Set</option>
+            <option value="User">User</option>
           </select>
         </div>
         <div class="sfp-results-list"></div>
@@ -759,6 +768,13 @@
     modal.addEventListener('click', (e) => {
       if (e.target === modal) closeSearchModal();
     });
+
+    // Start silent preloading of metadata to ensure instant search launch
+    if (objectsList.length === 0 && !preloadedObjectsPromise) {
+      preloadedObjectsPromise = getObjectsList().then(list => {
+        objectsList = [...SHORTCUTS, ...list];
+      }).catch(e => console.warn('[SF Pilot] Preload failed:', e));
+    }
 
     const input = modal.querySelector('.sfp-search-input');
 
@@ -868,8 +884,23 @@
     activeIndex = -1;
     filteredObjects = [];
 
-    // Lazy load objects list if not cached locally
-    if (objectsList.length === 0) {
+    // Lazy load or wait for preload if not cached locally
+    if (objectsList.length > 0) {
+      // 99% of the time: Data is already preloaded! Render instantly.
+      filteredObjects = objectsList.slice(0, 50);
+      renderResults();
+    } else if (preloadedObjectsPromise) {
+      // 1% of the time: The user hit Cmd+K immediately after page load.
+      renderLoading('Waiting for background preload...');
+      try {
+        await preloadedObjectsPromise;
+        filteredObjects = objectsList.slice(0, 50);
+        renderResults();
+      } catch (e) {
+        renderError('Failed to load sObjects list.');
+      }
+    } else {
+      // Absolute fallback if preload somehow didn't start
       renderLoading();
       try {
         const list = await getObjectsList();
@@ -879,9 +910,6 @@
       } catch (e) {
         renderError('Failed to load sObjects list.');
       }
-    } else {
-      filteredObjects = objectsList.slice(0, 50);
-      renderResults();
     }
   }
 
@@ -1168,6 +1196,8 @@
         destination = obj.setupId;
       } else if (obj.type === 'Profile' || obj.type === 'Permission Set') {
         destination = obj.setupId;
+      } else if (obj.type === 'User') {
+        destination = `${obj.setupId}?noredirect=1`;
       } else {
         // Apex Class, Apex Trigger, Visualforce Page, Custom Label setup detail page
         destination = obj.setupId;
