@@ -71,17 +71,32 @@ async function handleGetObjects(msg, sender) {
       return objectsCache.get(cacheKey);
     }
 
-    // Check persistent cache to avoid 8-12s API load time
+    // Check persistent cache and passively clean up expired caches from other orgs to prevent QuotaExceeded
     try {
-      const stored = await chrome.storage.local.get([cacheKey, `${cacheKey}_time`]);
+      const allStored = await chrome.storage.local.get(null);
       const now = Date.now();
-      // Use cache if it's less than 24 hours old
-      if (stored[cacheKey] && stored[`${cacheKey}_time`] && (now - stored[`${cacheKey}_time`] < 24 * 60 * 60 * 1000)) {
-        objectsCache.set(cacheKey, stored[cacheKey]);
-        return stored[cacheKey];
+      const keysToRemove = [];
+      
+      for (const key of Object.keys(allStored)) {
+        if (key.startsWith('sf_objects_org_') && !key.endsWith('_time')) {
+          const timeKey = `${key}_time`;
+          const time = allStored[timeKey];
+          if (!time || now - time > 24 * 60 * 60 * 1000) {
+            keysToRemove.push(key, timeKey);
+          }
+        }
+      }
+      
+      if (keysToRemove.length > 0) {
+        await chrome.storage.local.remove(keysToRemove);
+      }
+      
+      if (allStored[cacheKey] && !keysToRemove.includes(cacheKey)) {
+        objectsCache.set(cacheKey, allStored[cacheKey]);
+        return allStored[cacheKey];
       }
     } catch (e) {
-      console.warn('[SF Pilot] Cache read failed:', e);
+      console.warn('[SF Pilot] Cache read/cleanup failed:', e);
     }
   }
 
