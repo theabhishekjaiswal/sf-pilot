@@ -363,7 +363,6 @@ async function handleGetObjects(msg, sender) {
     return [];
   })();
 
-  try {
     const [_, data, classes, triggers, pages, labels, settings, flows, tabs, profiles, permissionSets, staticResources, users] = await Promise.all([
       toolingPromise,
       sobjectsPromise,
