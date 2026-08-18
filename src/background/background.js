@@ -381,17 +381,17 @@ async function handleGetObjects(msg, sender) {
     unifiedList.sort((a, b) => a.label.localeCompare(b.label));
 
     objectsCache.set(cacheKey, unifiedList);
-    
+
     // Save to persistent cache
     try {
-      await chrome.storage.local.set({ 
-        [cacheKey]: unifiedList, 
-        [`${cacheKey}_time`]: Date.now() 
+      await chrome.storage.local.set({
+        [cacheKey]: unifiedList,
+        [`${cacheKey}_time`]: Date.now()
       });
     } catch (e) {
       console.warn('[SF Pilot] Cache save failed:', e);
     }
-    
+
     return unifiedList;
   } catch (e) {
     throw e;
@@ -428,7 +428,7 @@ function toClassicBase(urlOrString) {
   } else if (hostname.includes('.vf.force.com') || hostname.includes('.visual.force.com')) {
     // VF page domain — strip VF prefix to get the Classic base
     hostname = hostname.replace(/\.vf\.force\.com$/, '.my.salesforce.com')
-                       .replace(/\.visual\.force\.com$/, '.my.salesforce.com');
+      .replace(/\.visual\.force\.com$/, '.my.salesforce.com');
   } else if (hostname.includes('.salesforce-setup.com')) {
     hostname = hostname.replace(/\.salesforce-setup\.com$/, '.salesforce.com');
   }
@@ -511,19 +511,6 @@ async function handleRequest(msg, sender) {
   return text ? JSON.parse(text) : {};
 }
 
-// ─── Session ID helper ────────────────────────────────────────────────────────
-
-/**
- * Message handler for sfGetSid — wraps getSid() for content script use.
- */
-async function handleGetSid(msg, sender) {
-  const isExt = sender.tab && sender.tab.url && sender.tab.url.startsWith('chrome-extension:');
-  const tabUrl = sender.tab && sender.tab.url && !isExt ? new URL(sender.tab.url) : null;
-  const rawBase = tabUrl ? `${tabUrl.protocol}//${tabUrl.hostname}` : (msg.baseUrl || '');
-  const apiBase = toClassicBase(rawBase);
-  const sid = await getSid(apiBase);
-  return sid; // message handler resolves with the sid value directly
-}
 
 /**
  * Read the Salesforce session cookie (`sid`) for the given origin.
