@@ -265,15 +265,6 @@
     return url.toString();
   }
 
-  function switchToClassicUrl(page) {
-    const classicBase = getClassicBase();
-    if (page && page.recordId) {
-      // ?nooverride=1 forces Salesforce to stay in Classic instead of auto-redirecting back to Lightning
-      return `${classicBase}/${page.recordId}?nooverride=1`;
-    }
-    return `${classicBase}?nooverride=1`;
-  }
-
   function buildClassicUrl(page) {
     const classicBase = getClassicBase();
     if (page && page.recordId) {
