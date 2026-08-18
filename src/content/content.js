@@ -33,6 +33,18 @@
     return;
   }
 
+  // ─── Guard: skip customer-facing Experience Cloud portals ─────────────────
+  // On my.site.com and salesforce-experience.com we only activate inside the
+  // Experience Builder / Community Setup admin context — NOT on customer portals.
+  const isExperienceDomain = hostname.endsWith('.my.site.com') || hostname.endsWith('.salesforce-experience.com');
+  if (isExperienceDomain) {
+    const path = window.location.pathname + window.location.hash;
+    const isBuilderContext = /communitySetup|cwApp|picasso|commeditor|sfsites\/picasso/i.test(path);
+    if (!isBuilderContext) {
+      return; // Customer-facing portal — do not inject
+    }
+  }
+
   // ─── Constants ────────────────────────────────────────────────────────────
 
   const APP_OBJECT = 'genesis__Applications__c';
