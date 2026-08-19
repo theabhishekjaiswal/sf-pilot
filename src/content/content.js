@@ -1456,26 +1456,31 @@
 
     // Render basic record toolbar — position BEFORE appending to avoid flash
     const toolbarRoot = buildToolbar(page, null, false);
-    try {
-      const tbSettings = await chrome.storage.local.get(['sfn_toolbar_draggable', 'sfn_toolbar_pos', 'sfn_toolbar_opacity']);
-      const isDraggable = tbSettings.sfn_toolbar_draggable !== false;
-      const opacity = tbSettings.sfn_toolbar_opacity !== undefined ? tbSettings.sfn_toolbar_opacity : 100;
-      
-      toolbarRoot.style.opacity = (opacity / 100).toFixed(2);
+    
+    async function applyToolbarSettings(el) {
+      try {
+        const tbSettings = await chrome.storage.local.get(['sfn_toolbar_draggable', 'sfn_toolbar_pos', 'sfn_toolbar_opacity']);
+        const isDraggable = tbSettings.sfn_toolbar_draggable !== false;
+        const opacity = tbSettings.sfn_toolbar_opacity !== undefined ? tbSettings.sfn_toolbar_opacity : 100;
+        
+        el.style.opacity = (opacity / 100).toFixed(2);
 
-      if (isDraggable && tbSettings.sfn_toolbar_pos && tbSettings.sfn_toolbar_pos.left) {
-        // Pre-apply saved position so toolbar never flashes at top
-        toolbarRoot.style.position = 'fixed';
-        toolbarRoot.style.left = tbSettings.sfn_toolbar_pos.left;
-        toolbarRoot.style.top = tbSettings.sfn_toolbar_pos.top;
-        toolbarRoot.style.transform = 'none';
-        toolbarRoot.style.bottom = 'auto';
+        if (isDraggable && tbSettings.sfn_toolbar_pos && tbSettings.sfn_toolbar_pos.left) {
+          // Pre-apply saved position so toolbar never flashes at top
+          el.style.position = 'fixed';
+          el.style.left = tbSettings.sfn_toolbar_pos.left;
+          el.style.top = tbSettings.sfn_toolbar_pos.top;
+          el.style.transform = 'none';
+          el.style.bottom = 'auto';
+        }
+        document.documentElement.appendChild(el);
+        if (isDraggable) initDraggable(el);
+      } catch (e) {
+        document.documentElement.appendChild(el); // fallback
       }
-      document.documentElement.appendChild(toolbarRoot);
-      if (isDraggable) initDraggable(toolbarRoot);
-    } catch (e) {
-      document.documentElement.appendChild(toolbarRoot); // fallback
     }
+
+    await applyToolbarSettings(toolbarRoot);
 
     // Resolve object type if unknown
     if (page.recordId && !page.objectType) {
@@ -1496,14 +1501,18 @@
       const existing = document.getElementById(TOOLBAR_ID);
       if (!existing || location.href !== lastUrl) return;
       existing.remove();
-      document.documentElement.appendChild(buildToolbar(page, null, true));
+      
+      const loadingEl = buildToolbar(page, null, true);
+      await applyToolbarSettings(loadingEl);
 
       const appData = await fetchAppData(page.recordId);
 
       const prev = document.getElementById(TOOLBAR_ID);
       if (!prev || location.href !== lastUrl) return;
       prev.remove();
-      document.documentElement.appendChild(buildToolbar(page, appData, false));
+      
+      const finalEl = buildToolbar(page, appData, false);
+      await applyToolbarSettings(finalEl);
     }
   }
 
