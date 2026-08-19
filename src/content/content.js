@@ -715,6 +715,36 @@
       type: 'Shortcut',
       setupId: '/p/setup/custent/EventObjectsPage?setupid=EventObjects&retURL=%2Fui%2Fsetup%2FSetup%3Fsetupid%3DDevToolsIntegrate'
     },
+    {
+      label: 'Application Test Execution',
+      name: '__shortcut_application_test_execution',
+      type: 'Shortcut',
+      setupId: '/ui/setup/apex/ApexTestQueuePage?retURL=%2Fui%2Fsetup%2FSetup%3Fsetupid%3DDevToolsIntegrate&setupid=ApexTestQueue'
+    },
+    {
+      label: 'Deployment Settings',
+      name: '__shortcut_deployment_settings',
+      type: 'Shortcut',
+      setupId: '/changemgmt/deploymentSettings.apexp?retURL=%2Fui%2Fsetup%2FSetup%3Fsetupid%3DDeploy&setupid=DeploymentSettings'
+    },
+    {
+      label: 'Deployment Status',
+      name: '__shortcut_deployment_status',
+      type: 'Shortcut',
+      setupId: '/changemgmt/monitorDeployment.apexp?retURL=%2Fui%2Fsetup%2FSetup%3Fsetupid%3DDeploy&setupid=DeployStatus'
+    },
+    {
+      label: 'Lightning Components',
+      name: '__shortcut_lightning_components',
+      type: 'Shortcut',
+      setupId: '/ui/aura/impl/setup/LightningComponentListPage?retURL=%2Fui%2Fsetup%2FSetup%3Fsetupid%3DLightningComponents&setupid=LightningComponentBundles'
+    },
+    {
+      label: 'Deliverability',
+      name: '__shortcut_deliverability',
+      type: 'Shortcut',
+      setupId: '/email-admin/editOrgEmailSettings.apexp?retURL=%2Fui%2Fsetup%2FSetup%3Fsetupid%3DEmailAdmin&setupid=OrgEmailSettings'
+    }
   ];
 
   let objectsList = [];
