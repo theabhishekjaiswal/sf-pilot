@@ -1,0 +1,807 @@
+﻿diff --git a/manifest.json b/manifest.json
+index fa337d3..5552bfe 100644
+--- a/manifest.json
++++ b/manifest.json
+@@ -1,7 +1,7 @@
+ {
+   "manifest_version": 3,
+   "name": "Salesforce Pilot",
+-  "version": "3.1.0",
++  "version": "3.1.1",
+   "description": "Supercharge your Salesforce experience! The ultimate navigation toolbar and blazing fast metadata search.",
+   "permissions": [
+     "scripting",
+diff --git a/src/content/content.js b/src/content/content.js
+index 0912a32..0973a45 100644
+--- a/src/content/content.js
++++ b/src/content/content.js
+@@ -45,6 +45,9 @@
+     }
+   }
+ 
++  // ΓöÇΓöÇΓöÇ Guard: skip Flow Builder (no record context, metadata search still works) ΓöÇ
++  const isFlowBuilder = window.location.pathname.startsWith('/builder_platform_interaction/');
++
+   // ΓöÇΓöÇΓöÇ Constants ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+ 
+   const APP_OBJECT = 'genesis__Applications__c';
+@@ -83,16 +86,32 @@
+ 
+   // ΓöÇΓöÇΓöÇ Domain helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+ 
++  function _getEffectiveLocation() {
++    if (window.location.protocol === 'chrome-extension:') {
++      const hostUrl = new URLSearchParams(window.location.search).get('host');
++      if (hostUrl) {
++        try {
++          return new URL(hostUrl);
++        } catch (e) {
++          // If it's just a hostname string
++          return { protocol: 'https:', hostname: hostUrl.replace(/^https?:\/\//, '') };
++        }
++      }
++    }
++    return window.location;
++  }
++
+   function getApiBaseUrl() {
+-    return `${window.location.protocol}//${window.location.hostname}`;
++    const loc = _getEffectiveLocation();
++    return `${loc.protocol}//${loc.hostname}`;
+   }
+ 
+   function isOnLightningDomain() {
+-    return window.location.hostname.includes('.lightning.force.com');
++    return _getEffectiveLocation().hostname.includes('.lightning.force.com');
+   }
+ 
+   function getClassicBase() {
+-    const { protocol, hostname } = window.location;
++    const { protocol, hostname } = _getEffectiveLocation();
+     let h = hostname;
+     
+     if (h.includes('.lightning.force.com')) {
+@@ -172,7 +191,9 @@
+    * Returns null if the current page is not a record page.
+    */
+   function parsePage() {
++    if (window.location.protocol === 'chrome-extension:') return null;
+     const { pathname, searchParams } = new URL(window.location.href);
++    if (pathname.includes('/setup/') || pathname.includes('/p/setup/') || pathname.includes('/lightning/setup/')) return null;
+     const onLEX = isOnLightningDomain();
+ 
+     // 1. Lightning record:  /lightning/r/{ObjectApiName}/{RecordId}/...
+@@ -194,8 +215,8 @@
+       if (/^(setup|lightning|apex|visualforce|servlet|secur|partners)/i.test(id)) {
+         return null;
+       }
+-      // Skip setup/metadata ID prefixes
+-      if (/^(01I|01M|01p|01q|01s|01u|0A2|0to|04G|02a)/.test(id)) {
++      // Skip setup/metadata ID prefixes (01I=CustomObject, 00N=CustomField, 300/301=Flow, etc.)
++      if (/^(01I|01M|01p|01q|01s|01u|0A2|0to|04G|02a|00N|300|301)/.test(id)) {
+         return null;
+       }
+       return {
+@@ -213,7 +234,7 @@
+     const idParam = searchParams.get('id') || searchParams.get('recordId') || searchParams.get('c__recordId');
+     if (apexMatch && idParam && SF_ID_RE.test(idParam)) {
+       // Skip metadata/setup record IDs on VF pages
+-      if (/^(01I|01M|01p|01q|01s|01u|0A2|0to|04G|02a)/.test(idParam)) {
++      if (/^(01I|01M|01p|01q|01s|01u|0A2|0to|04G|02a|00N|300|301)/.test(idParam)) {
+         return null;
+       }
+       // Look up objectType from map first, fall back to key-prefix lookup, then API resolve
+@@ -228,7 +249,7 @@
+ 
+     // 4. Generic ?id= fallback (any page with a valid SF ID, not just /apex/)
+     if (idParam && SF_ID_RE.test(idParam)) {
+-      if (/^(01I|01M|01p|01q|01s|01u|0A2|0to|04G|02a)/.test(idParam)) {
++      if (/^(01I|01M|01p|01q|01s|01u|0A2|0to|04G|02a|00N|300|301)/.test(idParam)) {
+         return null;
+       }
+       return {
+@@ -694,6 +715,36 @@
+       type: 'Shortcut',
+       setupId: '/p/setup/custent/EventObjectsPage?setupid=EventObjects&retURL=%2Fui%2Fsetup%2FSetup%3Fsetupid%3DDevToolsIntegrate'
+     },
++    {
++      label: 'Application Test Execution',
++      name: '__shortcut_application_test_execution',
++      type: 'Shortcut',
++      setupId: '/ui/setup/apex/ApexTestQueuePage?retURL=%2Fui%2Fsetup%2FSetup%3Fsetupid%3DDevToolsIntegrate&setupid=ApexTestQueue'
++    },
++    {
++      label: 'Deployment Settings',
++      name: '__shortcut_deployment_settings',
++      type: 'Shortcut',
++      setupId: '/changemgmt/deploymentSettings.apexp?retURL=%2Fui%2Fsetup%2FSetup%3Fsetupid%3DDeploy&setupid=DeploymentSettings'
++    },
++    {
++      label: 'Deployment Status',
++      name: '__shortcut_deployment_status',
++      type: 'Shortcut',
++      setupId: '/changemgmt/monitorDeployment.apexp?retURL=%2Fui%2Fsetup%2FSetup%3Fsetupid%3DDeploy&setupid=DeployStatus'
++    },
++    {
++      label: 'Lightning Components',
++      name: '__shortcut_lightning_components',
++      type: 'Shortcut',
++      setupId: '/ui/aura/impl/setup/LightningComponentListPage?retURL=%2Fui%2Fsetup%2FSetup%3Fsetupid%3DLightningComponents&setupid=LightningComponentBundles'
++    },
++    {
++      label: 'Deliverability',
++      name: '__shortcut_deliverability',
++      type: 'Shortcut',
++      setupId: '/email-admin/editOrgEmailSettings.apexp?retURL=%2Fui%2Fsetup%2FSetup%3Fsetupid%3DEmailAdmin&setupid=OrgEmailSettings'
++    }
+   ];
+ 
+   let objectsList = [];
+@@ -745,12 +796,33 @@
+         </div>
+         <div class="sfp-results-list"></div>
+         <div class="sfp-settings-panel" id="sfp-settings-panel" style="display:none;">
+-          <div class="sfp-settings-row">
+-            <span class="sfp-settings-label">Show Navigation Bar</span>
+-            <label class="sfp-toggle">
+-              <input type="checkbox" id="sfp-toggle-navbar" checked>
+-              <span class="sfp-toggle-slider"></span>
+-            </label>
++          <div class="sfp-settings-header">
++            <span class="sfp-settings-title">${ICONS.gear} Settings</span>
++            <button class="sfp-settings-close" id="sfp-settings-close" title="Close settings">${ICONS.hide}</button>
++          </div>
++          <div class="sfp-settings-section">
++            <div class="sfp-settings-section-label">Navigation Bar</div>
++            <div class="sfp-settings-row">
++              <span class="sfp-settings-label">Show Navigation Bar</span>
++              <label class="sfp-toggle">
++                <input type="checkbox" id="sfp-toggle-navbar" checked>
++                <span class="sfp-toggle-slider"></span>
++              </label>
++            </div>
++            <div class="sfp-settings-row">
++              <span class="sfp-settings-label">Movable Navigation Bar</span>
++              <label class="sfp-toggle">
++                <input type="checkbox" id="sfp-toggle-draggable" checked>
++                <span class="sfp-toggle-slider"></span>
++              </label>
++            </div>
++            <div class="sfp-settings-row sfp-settings-row-col">
++              <div class="sfp-settings-label-flex">
++                <span class="sfp-settings-label">Opacity</span>
++                <span class="sfp-settings-value" id="sfp-opacity-value">100%</span>
++              </div>
++              <input type="range" id="sfp-slider-opacity" class="sfp-range-slider" min="20" max="100" value="100" step="5">
++            </div>
+           </div>
+         </div>
+         <div class="sfp-search-footer">
+@@ -770,10 +842,14 @@
+     });
+ 
+     // Start silent preloading of metadata to ensure instant search launch
++    // Reset promise to null on failure so the next open can retry cleanly
+     if (objectsList.length === 0 && !preloadedObjectsPromise) {
+       preloadedObjectsPromise = getObjectsList().then(list => {
+         objectsList = [...SHORTCUTS, ...list];
+-      }).catch(e => console.warn('[SF Pilot] Preload failed:', e));
++      }).catch(e => {
++        console.warn('[SF Pilot] Preload failed:', e);
++        preloadedObjectsPromise = null; // Allow retry on next modal open
++      });
+     }
+ 
+     const input = modal.querySelector('.sfp-search-input');
+@@ -790,6 +866,10 @@
+     const refreshBtn = modal.querySelector('#sfp-refresh-btn');
+     const settingsPanel = modal.querySelector('#sfp-settings-panel');
+     const navbarToggle = modal.querySelector('#sfp-toggle-navbar');
++    const draggableToggle = modal.querySelector('#sfp-toggle-draggable');
++    const opacitySlider = modal.querySelector('#sfp-slider-opacity');
++    const opacityValue = modal.querySelector('#sfp-opacity-value');
++    const settingsCloseBtn = modal.querySelector('#sfp-settings-close');
+ 
+     // Auto-close settings panel when clicking anywhere outside it
+     modal.querySelector('.sfp-search-panel').addEventListener('click', (e) => {
+@@ -802,14 +882,24 @@
+       }
+     });
+ 
++    settingsCloseBtn.addEventListener('click', () => { settingsPanel.style.display = 'none'; });
++
+     gearBtn.addEventListener('click', async () => {
+       const isOpen = settingsPanel.style.display !== 'none';
+       if (isOpen) {
+         settingsPanel.style.display = 'none';
+       } else {
+-        // Read current value before showing
+-        const stored = await chrome.storage.local.get(['sfn_toolbar_enabled']);
++        // Read current values before showing
++        const stored = await chrome.storage.local.get(['sfn_toolbar_enabled', 'sfn_toolbar_draggable', 'sfn_toolbar_opacity']);
+         navbarToggle.checked = stored.sfn_toolbar_enabled !== false;
++        draggableToggle.checked = stored.sfn_toolbar_draggable !== false;
++        
++        const opVal = stored.sfn_toolbar_opacity !== undefined ? stored.sfn_toolbar_opacity : 100;
++        opacitySlider.value = opVal;
++        opacityValue.textContent = `${opVal}%`;
++        const pct = (opVal - opacitySlider.min) / (opacitySlider.max - opacitySlider.min) * 100;
++        opacitySlider.style.background = `linear-gradient(to right, #0176d3 0%, #0176d3 ${pct}%, rgba(255, 255, 255, 0.1) ${pct}%, rgba(255, 255, 255, 0.1) 100%)`;
++        
+         settingsPanel.style.display = 'block';
+       }
+     });
+@@ -847,20 +937,46 @@
+     navbarToggle.addEventListener('change', async () => {
+       await chrome.storage.local.set({ sfn_toolbar_enabled: navbarToggle.checked });
+       if (!navbarToggle.checked) {
+-        // Remove toolbar immediately
+         const el = document.getElementById(TOOLBAR_ID);
+         if (el) el.remove();
+       } else {
+-        // Reinject toolbar ΓÇö also clear the session hide so it actually shows
+         toolbarHiddenThisLoad = false;
+-        if (!document.getElementById(TOOLBAR_ID)) {
+-          init();
+-        }
++        if (!document.getElementById(TOOLBAR_ID)) init();
+       }
+-      // Auto-close settings panel after toggle so user sees the change take effect
+       setTimeout(() => { settingsPanel.style.display = 'none'; }, 600);
+     });
+ 
++    draggableToggle.addEventListener('change', async () => {
++      await chrome.storage.local.set({ sfn_toolbar_draggable: draggableToggle.checked });
++      const tb = document.getElementById(TOOLBAR_ID);
++      if (tb) {
++        if (draggableToggle.checked) {
++          initDraggable(tb);
++        } else {
++          tb.style.top = '';
++          tb.style.left = '';
++          tb.style.transform = '';
++          tb.style.bottom = '';
++          tb.removeAttribute('data-draggable');
++        }
++      }
++    });
++
++    opacitySlider.addEventListener('input', () => {
++      const val = opacitySlider.value;
++      opacityValue.textContent = `${val}%`;
++      const pct = (val - opacitySlider.min) / (opacitySlider.max - opacitySlider.min) * 100;
++      opacitySlider.style.background = `linear-gradient(to right, #0176d3 0%, #0176d3 ${pct}%, rgba(255, 255, 255, 0.1) ${pct}%, rgba(255, 255, 255, 0.1) 100%)`;
++      const tb = document.getElementById(TOOLBAR_ID);
++      if (tb) {
++        tb.style.opacity = (val / 100).toFixed(2);
++      }
++    });
++
++    opacitySlider.addEventListener('change', async () => {
++      await chrome.storage.local.set({ sfn_toolbar_opacity: parseInt(opacitySlider.value, 10) });
++    });
++
+     document.documentElement.appendChild(modal);
+   }
+ 
+@@ -1246,6 +1362,57 @@
+     }
+   });
+ 
++  // ΓöÇΓöÇΓöÇ Draggable Toolbar ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++
++  function initDraggable(toolbarEl) {
++    if (toolbarEl.getAttribute('data-draggable') === 'true') return; // already init
++    toolbarEl.setAttribute('data-draggable', 'true');
++
++    const handle = toolbarEl.querySelector('.sfn-logo') || toolbarEl;
++    handle.style.cursor = 'grab';
++
++    let dragging = false;
++    let startX, startY, origLeft, origTop;
++
++    handle.addEventListener('pointerdown', (e) => {
++      // Only main button (left click)
++      if (e.button !== 0) return;
++      e.preventDefault();
++      dragging = true;
++      const rect = toolbarEl.getBoundingClientRect();
++      startX = e.clientX;
++      startY = e.clientY;
++      origLeft = rect.left;
++      origTop = rect.top;
++      handle.style.cursor = 'grabbing';
++      toolbarEl.style.transition = 'none';
++      document.documentElement.setPointerCapture(e.pointerId);
++    });
++
++    document.documentElement.addEventListener('pointermove', (e) => {
++      if (!dragging) return;
++      const dx = e.clientX - startX;
++      const dy = e.clientY - startY;
++      const newLeft = Math.max(0, Math.min(window.innerWidth - toolbarEl.offsetWidth, origLeft + dx));
++      const newTop = Math.max(0, Math.min(window.innerHeight - toolbarEl.offsetHeight, origTop + dy));
++      toolbarEl.style.position = 'fixed';
++      toolbarEl.style.left = `${newLeft}px`;
++      toolbarEl.style.top = `${newTop}px`;
++      toolbarEl.style.transform = 'none';
++      toolbarEl.style.bottom = 'auto';
++    });
++
++    document.documentElement.addEventListener('pointerup', async (e) => {
++      if (!dragging) return;
++      dragging = false;
++      handle.style.cursor = 'grab';
++      toolbarEl.style.transition = '';
++      // Persist final position
++      const pos = { left: toolbarEl.style.left, top: toolbarEl.style.top };
++      try { await chrome.storage.local.set({ sfn_toolbar_pos: pos }); } catch (err) {}
++    });
++  }
++
+   // ΓöÇΓöÇΓöÇ Init ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+ 
+   const _resolvedTypes = new Map();
+@@ -1284,8 +1451,31 @@
+     if (document.getElementById(TOOLBAR_ID)) return;
+     if (!document.documentElement) return;
+ 
+-    // Render basic record toolbar
+-    document.documentElement.appendChild(buildToolbar(page, null, false));
++    // Skip toolbar on Flow Builder (no record context there)
++    if (isFlowBuilder) return;
++
++    // Render basic record toolbar ΓÇö position BEFORE appending to avoid flash
++    const toolbarRoot = buildToolbar(page, null, false);
++    try {
++      const tbSettings = await chrome.storage.local.get(['sfn_toolbar_draggable', 'sfn_toolbar_pos', 'sfn_toolbar_opacity']);
++      const isDraggable = tbSettings.sfn_toolbar_draggable !== false;
++      const opacity = tbSettings.sfn_toolbar_opacity !== undefined ? tbSettings.sfn_toolbar_opacity : 100;
++      
++      toolbarRoot.style.opacity = (opacity / 100).toFixed(2);
++
++      if (isDraggable && tbSettings.sfn_toolbar_pos && tbSettings.sfn_toolbar_pos.left) {
++        // Pre-apply saved position so toolbar never flashes at top
++        toolbarRoot.style.position = 'fixed';
++        toolbarRoot.style.left = tbSettings.sfn_toolbar_pos.left;
++        toolbarRoot.style.top = tbSettings.sfn_toolbar_pos.top;
++        toolbarRoot.style.transform = 'none';
++        toolbarRoot.style.bottom = 'auto';
++      }
++      document.documentElement.appendChild(toolbarRoot);
++      if (isDraggable) initDraggable(toolbarRoot);
++    } catch (e) {
++      document.documentElement.appendChild(toolbarRoot); // fallback
++    }
+ 
+     // Resolve object type if unknown
+     if (page.recordId && !page.objectType) {
+diff --git a/src/content/toolbar.css b/src/content/toolbar.css
+index d50fed1..5d46a98 100644
+--- a/src/content/toolbar.css
++++ b/src/content/toolbar.css
+@@ -912,12 +912,63 @@
+ /* ΓöÇΓöÇΓöÇ Inline Settings Panel ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */
+ 
+ .sfp-settings-panel {
+-  background: rgba(255, 255, 255, 0.04);
+-  border: 1px solid rgba(255, 255, 255, 0.07);
+-  border-radius: 10px;
+-  padding: 10px 14px;
+-  margin-bottom: 2px;
++  background: rgba(9, 13, 24, 0.96);
++  border: 1px solid rgba(255, 255, 255, 0.1);
++  border-radius: 12px;
++  margin-bottom: 4px;
++  overflow: hidden;
+   animation: sfp-scale-up 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) both;
++  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
++}
++
++.sfp-settings-header {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  padding: 10px 14px 8px;
++  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
++}
++
++.sfp-settings-title {
++  font-size: 11.5px;
++  font-weight: 600;
++  color: rgba(255, 255, 255, 0.85);
++  display: flex;
++  align-items: center;
++  gap: 6px;
++  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
++  letter-spacing: 0.02em;
++  text-transform: uppercase;
++}
++
++.sfp-settings-close {
++  background: none;
++  border: none;
++  color: rgba(255, 255, 255, 0.4);
++  cursor: pointer;
++  padding: 2px;
++  display: flex;
++  align-items: center;
++  border-radius: 4px;
++  transition: color 0.15s, background 0.15s;
++}
++.sfp-settings-close:hover {
++  color: rgba(255, 255, 255, 0.9);
++  background: rgba(255, 255, 255, 0.08);
++}
++
++.sfp-settings-section {
++  padding: 8px 14px 10px;
++}
++
++.sfp-settings-section-label {
++  font-size: 10px;
++  font-weight: 600;
++  color: rgba(255, 255, 255, 0.3);
++  text-transform: uppercase;
++  letter-spacing: 0.08em;
++  margin-bottom: 8px;
++  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+ }
+ 
+ .sfp-settings-row {
+@@ -925,6 +976,7 @@
+   align-items: center;
+   justify-content: space-between;
+   gap: 12px;
++  padding: 4px 0;
+ }
+ 
+ .sfp-settings-label {
+@@ -935,6 +987,23 @@
+   user-select: none;
+ }
+ 
++.sfp-settings-action-btn {
++  background: rgba(255, 255, 255, 0.07);
++  border: 1px solid rgba(255, 255, 255, 0.1);
++  color: rgba(255, 255, 255, 0.6);
++  font-size: 11px;
++  padding: 3px 9px;
++  border-radius: 6px;
++  cursor: pointer;
++  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
++  transition: background 0.15s, color 0.15s, border-color 0.15s;
++}
++.sfp-settings-action-btn:hover {
++  background: rgba(255, 255, 255, 0.13);
++  color: rgba(255, 255, 255, 0.9);
++  border-color: rgba(255, 255, 255, 0.2);
++}
++
+ /* ΓöÇΓöÇΓöÇ Toggle Switch ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */
+ 
+ .sfp-toggle {
+@@ -988,6 +1057,50 @@
+   background: #fff;
+ }
+ 
++/* ΓöÇΓöÇΓöÇ Range Slider (Opacity) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */
++
++.sfp-settings-row-col {
++  flex-direction: column;
++  align-items: stretch;
++  gap: 8px;
++}
++.sfp-settings-label-flex {
++  display: flex;
++  justify-content: space-between;
++  align-items: center;
++}
++.sfp-settings-value {
++  font-size: 11px;
++  color: var(--sfp-accent, #0176d3);
++  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
++  font-weight: 600;
++}
++
++.sfp-range-slider {
++  -webkit-appearance: none;
++  width: 100%;
++  height: 4px;
++  background: rgba(255, 255, 255, 0.1);
++  border-radius: 4px;
++  outline: none;
++  margin: 4px 0 8px 0;
++}
++
++.sfp-range-slider::-webkit-slider-thumb {
++  -webkit-appearance: none;
++  appearance: none;
++  width: 14px;
++  height: 14px;
++  border-radius: 50%;
++  background: #fff;
++  cursor: pointer;
++  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
++  border: 1px solid rgba(0,0,0,0.1);
++  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
++}
++.sfp-range-slider::-webkit-slider-thumb:hover {
++  transform: scale(1.2);
++}
+ 
+ 
+ /* Custom Dropdown UI */
+diff --git a/src/pages/data/data.css b/src/pages/data/data.css
+index 767ecac..14b7a7c 100644
+--- a/src/pages/data/data.css
++++ b/src/pages/data/data.css
+@@ -546,3 +546,23 @@ select.sfp-select option {
+   box-shadow: 0 2px 0 #ffd43b;
+ }
+ 
++/* Field Setup Wrench Button */
++.field-setup-btn {
++  display: inline-flex;
++  align-items: center;
++  justify-content: center;
++  opacity: 0;
++  color: var(--text-muted);
++  text-decoration: none;
++  padding: 2px 3px;
++  border-radius: 4px;
++  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
++  flex-shrink: 0;
++}
++tr:hover .field-setup-btn {
++  opacity: 1;
++}
++.field-setup-btn:hover {
++  color: var(--accent-color);
++  background: var(--accent-hover);
++}
+diff --git a/src/pages/data/data.html b/src/pages/data/data.html
+index 233c579..87125bd 100644
+--- a/src/pages/data/data.html
++++ b/src/pages/data/data.html
+@@ -3,6 +3,7 @@
+ <head>
+   <meta charset="UTF-8">
+   <title>Record Data | SF Pilot</title>
++  <link rel="stylesheet" href="../../content/toolbar.css">
+   <link rel="stylesheet" href="data.css">
+ </head>
+ <body>
+@@ -12,7 +13,10 @@
+         <svg class="sfp-header-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+         <div class="sfp-header-titles">
+           <h1 id="sfp-record-title">Record Data</h1>
+-          <h2 id="sfp-object-type">Loading...</h2>
++          <div style="display:flex;align-items:center;gap:6px;">
++            <h2 id="sfp-object-type">Loading...</h2>
++            <a id="sfp-object-setup-btn" target="_blank" href="#" title="Open object setup in Classic" style="display:none; color:var(--sfp-accent);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg></a>
++          </div>
+         </div>
+       </div>
+         <div class="sfp-header-right">
+@@ -70,5 +74,6 @@
+     </main>
+   </div>
+   <script src="data.js"></script>
++  <script src="../../content/content.js"></script>
+ </body>
+ </html>
+diff --git a/src/pages/data/data.js b/src/pages/data/data.js
+index a1491c5..1b9268d 100644
+--- a/src/pages/data/data.js
++++ b/src/pages/data/data.js
+@@ -32,6 +32,8 @@ document.addEventListener('DOMContentLoaded', async () => {
+   let allFields = [];
+   let pendingEdits = {}; // To store unsaved edits
+   let objectPinnedFields = []; // To store pinned field API names
++  let customFieldIds = {}; // API name (lowercase) ΓåÆ CustomField Tooling ID (00N...)
++  let resolvedApiVer = null; // Cached API version
+ 
+   function updateActionButtons() {
+     const editCount = Object.keys(pendingEdits).length;
+@@ -67,15 +69,41 @@ document.addEventListener('DOMContentLoaded', async () => {
+     });
+   }
+ 
+-  async function loadData() {
++  async function getApiVersion() {
++    if (resolvedApiVer) return resolvedApiVer;
+     try {
+-      const apiVer = 'v60.0';
+-      
+-      // Resolve objectType if missing
+-      if (!objectType) {
++      const resp = await sfFetch(`${host}/services/data/`);
++      if (Array.isArray(resp) && resp.length > 0) {
++        const raw = resp[resp.length - 1].version;
++        resolvedApiVer = raw.startsWith('v') ? raw : `v${raw}`;
++        return resolvedApiVer;
++      }
++    } catch (e) { /* fallback below */ }
++    resolvedApiVer = 'v60.0';
++    return resolvedApiVer;
++  }
++
++  async function loadData(isRefresh = false) {
++    // Always silently drop any pending edits on refresh ΓÇö no stale saves possible
++    pendingEdits = {};
++    updateActionButtons();
++    prefixCache = {};
++    nameCache = {};
++
++    // Show loading state
++    stateError.style.display = 'none';
++    table.style.display = 'none';
++    stateLoading.style.display = 'flex';
++
++    try {
++      const apiVer = await getApiVersion();
++
++      // Always re-resolve objectType from URL params on every load (never use stale cached var)
++      let currentObjectType = new URLSearchParams(window.location.search).get('objectType') || objectType;
++
++      if (!currentObjectType) {
+         const prefix = recordId.substring(0, 3);
+         const query = `SELECT QualifiedApiName FROM EntityDefinition WHERE KeyPrefix = '${prefix}' LIMIT 1`;
+-        
+         const resolveData = await new Promise((resolve, reject) => {
+           chrome.runtime.sendMessage(
+             { type: 'sfQuery', query: query, baseUrl: host },
+@@ -86,46 +114,82 @@ document.addEventListener('DOMContentLoaded', async () => {
+             }
+           );
+         });
+-
+         if (resolveData && resolveData.records && resolveData.records.length > 0) {
+-          objectType = resolveData.records[0].QualifiedApiName;
+-          typeEl.textContent = objectType;
++          currentObjectType = resolveData.records[0].QualifiedApiName;
+         } else {
+           throw new Error('Could not resolve object type for this record ID.');
+         }
+       }
++      objectType = currentObjectType;
++      typeEl.textContent = objectType;
+ 
+       const describeUrl = `${host}/services/data/${apiVer}/sobjects/${objectType}/describe`;
+-      const recordUrl = `${host}/services/data/${apiVer}/sobjects/${objectType}/${recordId}`;
+-
+-      // Fetch in parallel
+-      const [describeData, recordData] = await Promise.all([
++      const recordUrl   = `${host}/services/data/${apiVer}/sobjects/${objectType}/${recordId}`;
++      // Use FieldDefinition (QualifiedApiName = full API name incl. namespace + __c)
++      // DurableId format is "ObjectType.FieldName" ΓÇö we derive the 00N ID from EntityId
++      const toolingQuery = `SELECT QualifiedApiName,DurableId,EntityDefinitionId FROM FieldDefinition WHERE EntityDefinition.QualifiedApiName='${objectType}'`;
++      const toolingUrl  = `${host}/services/data/${apiVer}/tooling/query?q=${encodeURIComponent(toolingQuery)}`;
++
++      // Fetch describe, record data, and custom field IDs all in parallel
++      const [describeData, recordData, toolingData] = await Promise.all([
+         sfFetch(describeUrl),
+-        sfFetch(recordUrl)
++        sfFetch(recordUrl),
++        sfFetch(toolingUrl).catch(e => {
++          console.error('[SF Pilot] Tooling query failed:', e);
++          return null; // Non-fatal ΓÇö tooling may be unavailable
++        })
+       ]);
+ 
+       if (!describeData || !describeData.fields) {
+         throw new Error('Failed to load object metadata.');
+       }
+ 
++      // Build custom field ID map: lowercase QualifiedApiName ΓåÆ FieldId (00N...)
++      // DurableId is used to derive the 00N field setup URL. It comes in format "EntityId.FieldId"
++      customFieldIds = {};
++      if (toolingData && toolingData.records) {
++        if (toolingData.records.length > 0) {
++          const firstRecord = toolingData.records[0];
++          if (firstRecord.EntityDefinitionId) {
++            const entityDurableId = firstRecord.EntityDefinitionId;
++            if (objectType.toLowerCase().endsWith('__c') || entityDurableId.startsWith('01I')) {
++              const objSetupBtn = document.getElementById('sfp-object-setup-btn');
++              if (objSetupBtn) {
++                objSetupBtn.href = `${host}/${entityDurableId}`;
++                objSetupBtn.style.display = 'inline-flex';
++              }
++            }
++          }
++        }
++        for (const r of toolingData.records) {
++          let fieldId = r.DurableId;
++          if (fieldId && fieldId.includes('.')) {
++            const parts = fieldId.split('.');
++            if (parts.length > 1) {
++              fieldId = parts[1]; // The actual 00N ID is the second part
++            }
++          }
++          customFieldIds[r.QualifiedApiName.toLowerCase()] = fieldId;
++        }
++      }
++
+       // Map describe metadata to record values
+-      allFields = describeData.fields.map(f => {
+-        return {
+-          label: f.label,
+-          name: f.name,
+-          type: f.type,
+-          value: recordData[f.name],
+-          originalValue: recordData[f.name],
+-          picklistValues: f.picklistValues || []
+-        };
+-      });
++      allFields = describeData.fields.map(f => ({
++        label: f.label,
++        name: f.name,
++        type: f.type,
++        custom: f.custom,
++        value: recordData[f.name],
++        originalValue: recordData[f.name],
++        picklistValues: f.picklistValues || []
++      }));
+ 
+       // Load Pinned Fields from Storage
+       const storageKey = `sfp_pinned_${objectType}`;
+       const savedPins = await new Promise(res => chrome.storage.sync.get(storageKey, res));
+       objectPinnedFields = savedPins[storageKey] || [];
+ 
+-      // Sort alphabetically, but pinned fields bubble to top and maintain exact order
++      // Sort: pinned fields first (in their saved order), then alphabetical
+       allFields.sort((a, b) => {
+         const aIndex = objectPinnedFields.indexOf(a.name);
+         const bIndex = objectPinnedFields.indexOf(b.name);
+@@ -146,7 +210,6 @@ document.addEventListener('DOMContentLoaded', async () => {
+       });
+ 
+       applyFilters();
+-      
+       stateLoading.style.display = 'none';
+       table.style.display = 'table';
+       searchInput.focus();
+@@ -236,10 +299,22 @@ document.addEventListener('DOMContentLoaded', async () => {
+         rowAttrs = `class="draggable-row" data-field-name="${escapeHtml(f.name)}"`;
+       }
+       
++      // Build field setup URL for Classic
++      // Only for custom fields as requested ("Only working on custom Field, not on standard field")
++      let wrenchBtn = '';
++      if (f.custom) {
++        const fieldId = customFieldIds[f.name.toLowerCase()];
++        if (fieldId) {
++          const setupUrl = `${host}/${fieldId}`;
++          wrenchBtn = `<a href="${setupUrl}" target="_blank" class="field-setup-btn" title="Open field setup in Classic"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg></a>`;
++        }
++      }
++
++
+       return `
+         <tr ${rowAttrs}>
+           <td class="col-label" title="${escapeHtml(f.label)}"><div style="display: flex; align-items: center; gap: 6px;">${gripIcon} ${starIcon} <span>${escapeHtml(f.label)}</span></div></td>
+-          <td class="col-name">${escapeHtml(f.name)}</td>
++          <td class="col-name"><div style="display:flex;align-items:center;gap:5px;">${escapeHtml(f.name)}${wrenchBtn}</div></td>
+           <td class="col-type">${getTypeIcon(f.type)} ${escapeHtml(f.type)}</td>
+           <td class="${cellClasses}" data-field-name="${escapeHtml(f.name)}" data-original-value="${escapeHtml(origValStr)}" data-field-type="${escapeHtml(f.type)}">
+             ${valHtml}
+@@ -444,7 +519,7 @@ document.addEventListener('DOMContentLoaded', async () => {
+   btnCancel.addEventListener('click', () => {
+     pendingEdits = {};
+     updateActionButtons();
+-    loadData(); // Reload to original state
++    loadData(); // Reload fresh data from server (no stale state)
+   });
+ 
+   btnSave.addEventListener('click', async () => {
+@@ -456,7 +531,8 @@ document.addEventListener('DOMContentLoaded', async () => {
+     btnSave.textContent = 'Saving...';
+ 
+     try {
+-      const updateUrl = `${host}/services/data/v60.0/sobjects/${objectType}/${recordId}`;
++      const apiVer = await getApiVersion();
++      const updateUrl = `${host}/services/data/${apiVer}/sobjects/${objectType}/${recordId}`;
+       await sfFetch(updateUrl, 'PATCH', pendingEdits);
+       
+       // Success: commit edits
