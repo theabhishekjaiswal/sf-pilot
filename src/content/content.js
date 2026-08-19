@@ -768,6 +768,13 @@
                 <span class="sfp-toggle-slider"></span>
               </label>
             </div>
+            <div class="sfp-settings-row sfp-settings-row-col">
+              <div class="sfp-settings-label-flex">
+                <span class="sfp-settings-label">Opacity</span>
+                <span class="sfp-settings-value" id="sfp-opacity-value">100%</span>
+              </div>
+              <input type="range" id="sfp-slider-opacity" class="sfp-range-slider" min="20" max="100" value="100" step="5">
+            </div>
           </div>
         </div>
         <div class="sfp-search-footer">
@@ -812,6 +819,8 @@
     const settingsPanel = modal.querySelector('#sfp-settings-panel');
     const navbarToggle = modal.querySelector('#sfp-toggle-navbar');
     const draggableToggle = modal.querySelector('#sfp-toggle-draggable');
+    const opacitySlider = modal.querySelector('#sfp-slider-opacity');
+    const opacityValue = modal.querySelector('#sfp-opacity-value');
     const settingsCloseBtn = modal.querySelector('#sfp-settings-close');
 
     // Auto-close settings panel when clicking anywhere outside it
@@ -833,9 +842,14 @@
         settingsPanel.style.display = 'none';
       } else {
         // Read current values before showing
-        const stored = await chrome.storage.local.get(['sfn_toolbar_enabled', 'sfn_toolbar_draggable']);
+        const stored = await chrome.storage.local.get(['sfn_toolbar_enabled', 'sfn_toolbar_draggable', 'sfn_toolbar_opacity']);
         navbarToggle.checked = stored.sfn_toolbar_enabled !== false;
         draggableToggle.checked = stored.sfn_toolbar_draggable !== false;
+        
+        const opVal = stored.sfn_toolbar_opacity !== undefined ? stored.sfn_toolbar_opacity : 100;
+        opacitySlider.value = opVal;
+        opacityValue.textContent = `${opVal}%`;
+        
         settingsPanel.style.display = 'block';
       }
     });
@@ -896,6 +910,19 @@
           tb.removeAttribute('data-draggable');
         }
       }
+    });
+
+    opacitySlider.addEventListener('input', () => {
+      const val = opacitySlider.value;
+      opacityValue.textContent = `${val}%`;
+      const tb = document.getElementById(TOOLBAR_ID);
+      if (tb) {
+        tb.style.opacity = (val / 100).toFixed(2);
+      }
+    });
+
+    opacitySlider.addEventListener('change', async () => {
+      await chrome.storage.local.set({ sfn_toolbar_opacity: parseInt(opacitySlider.value, 10) });
     });
 
     document.documentElement.appendChild(modal);
