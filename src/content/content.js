@@ -745,12 +745,30 @@
         </div>
         <div class="sfp-results-list"></div>
         <div class="sfp-settings-panel" id="sfp-settings-panel" style="display:none;">
-          <div class="sfp-settings-row">
-            <span class="sfp-settings-label">Show Navigation Bar</span>
-            <label class="sfp-toggle">
-              <input type="checkbox" id="sfp-toggle-navbar" checked>
-              <span class="sfp-toggle-slider"></span>
-            </label>
+          <div class="sfp-settings-header">
+            <span class="sfp-settings-title">${ICONS.gear} Settings</span>
+            <button class="sfp-settings-close" id="sfp-settings-close" title="Close settings">${ICONS.hide}</button>
+          </div>
+          <div class="sfp-settings-section">
+            <div class="sfp-settings-section-label">Navigation Bar</div>
+            <div class="sfp-settings-row">
+              <span class="sfp-settings-label">Show Navigation Bar</span>
+              <label class="sfp-toggle">
+                <input type="checkbox" id="sfp-toggle-navbar" checked>
+                <span class="sfp-toggle-slider"></span>
+              </label>
+            </div>
+            <div class="sfp-settings-row">
+              <span class="sfp-settings-label">Movable Navigation Bar</span>
+              <label class="sfp-toggle">
+                <input type="checkbox" id="sfp-toggle-draggable" checked>
+                <span class="sfp-toggle-slider"></span>
+              </label>
+            </div>
+            <div class="sfp-settings-row" id="sfp-reset-pos-row">
+              <span class="sfp-settings-label" style="color: var(--sfp-muted);">Position</span>
+              <button class="sfp-settings-action-btn" id="sfp-reset-pos-btn">Reset Position</button>
+            </div>
           </div>
         </div>
         <div class="sfp-search-footer">
@@ -790,6 +808,10 @@
     const refreshBtn = modal.querySelector('#sfp-refresh-btn');
     const settingsPanel = modal.querySelector('#sfp-settings-panel');
     const navbarToggle = modal.querySelector('#sfp-toggle-navbar');
+    const draggableToggle = modal.querySelector('#sfp-toggle-draggable');
+    const resetPosBtn = modal.querySelector('#sfp-reset-pos-btn');
+    const resetPosRow = modal.querySelector('#sfp-reset-pos-row');
+    const settingsCloseBtn = modal.querySelector('#sfp-settings-close');
 
     // Auto-close settings panel when clicking anywhere outside it
     modal.querySelector('.sfp-search-panel').addEventListener('click', (e) => {
@@ -802,14 +824,18 @@
       }
     });
 
+    settingsCloseBtn.addEventListener('click', () => { settingsPanel.style.display = 'none'; });
+
     gearBtn.addEventListener('click', async () => {
       const isOpen = settingsPanel.style.display !== 'none';
       if (isOpen) {
         settingsPanel.style.display = 'none';
       } else {
-        // Read current value before showing
-        const stored = await chrome.storage.local.get(['sfn_toolbar_enabled']);
+        // Read current values before showing
+        const stored = await chrome.storage.local.get(['sfn_toolbar_enabled', 'sfn_toolbar_draggable']);
         navbarToggle.checked = stored.sfn_toolbar_enabled !== false;
+        draggableToggle.checked = stored.sfn_toolbar_draggable !== false;
+        resetPosRow.style.display = draggableToggle.checked ? 'flex' : 'none';
         settingsPanel.style.display = 'block';
       }
     });
@@ -847,18 +873,43 @@
     navbarToggle.addEventListener('change', async () => {
       await chrome.storage.local.set({ sfn_toolbar_enabled: navbarToggle.checked });
       if (!navbarToggle.checked) {
-        // Remove toolbar immediately
         const el = document.getElementById(TOOLBAR_ID);
         if (el) el.remove();
       } else {
-        // Reinject toolbar — also clear the session hide so it actually shows
         toolbarHiddenThisLoad = false;
-        if (!document.getElementById(TOOLBAR_ID)) {
-          init();
+        if (!document.getElementById(TOOLBAR_ID)) init();
+      }
+      setTimeout(() => { settingsPanel.style.display = 'none'; }, 600);
+    });
+
+    draggableToggle.addEventListener('change', async () => {
+      await chrome.storage.local.set({ sfn_toolbar_draggable: draggableToggle.checked });
+      resetPosRow.style.display = draggableToggle.checked ? 'flex' : 'none';
+      const tb = document.getElementById(TOOLBAR_ID);
+      if (tb) {
+        if (draggableToggle.checked) {
+          initDraggable(tb);
+        } else {
+          // Snap to default position
+          tb.style.top = '';
+          tb.style.left = '';
+          tb.style.transform = '';
+          tb.style.bottom = '';
+          tb.removeAttribute('data-draggable');
         }
       }
-      // Auto-close settings panel after toggle so user sees the change take effect
-      setTimeout(() => { settingsPanel.style.display = 'none'; }, 600);
+    });
+
+    resetPosBtn.addEventListener('click', async () => {
+      await chrome.storage.local.remove('sfn_toolbar_pos');
+      const tb = document.getElementById(TOOLBAR_ID);
+      if (tb) {
+        tb.style.top = '';
+        tb.style.left = '';
+        tb.style.transform = '';
+        tb.style.bottom = '';
+      }
+      settingsPanel.style.display = 'none';
     });
 
     document.documentElement.appendChild(modal);
@@ -1246,6 +1297,57 @@
     }
   });
 
+  // ─── Draggable Toolbar ────────────────────────────────────────────────────
+
+  function initDraggable(toolbarEl) {
+    if (toolbarEl.getAttribute('data-draggable') === 'true') return; // already init
+    toolbarEl.setAttribute('data-draggable', 'true');
+
+    const handle = toolbarEl.querySelector('.sfn-logo') || toolbarEl;
+    handle.style.cursor = 'grab';
+
+    let dragging = false;
+    let startX, startY, origLeft, origTop;
+
+    handle.addEventListener('pointerdown', (e) => {
+      // Only main button (left click)
+      if (e.button !== 0) return;
+      e.preventDefault();
+      dragging = true;
+      const rect = toolbarEl.getBoundingClientRect();
+      startX = e.clientX;
+      startY = e.clientY;
+      origLeft = rect.left;
+      origTop = rect.top;
+      handle.style.cursor = 'grabbing';
+      toolbarEl.style.transition = 'none';
+      document.documentElement.setPointerCapture(e.pointerId);
+    });
+
+    document.documentElement.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      const newLeft = Math.max(0, Math.min(window.innerWidth - toolbarEl.offsetWidth, origLeft + dx));
+      const newTop = Math.max(0, Math.min(window.innerHeight - toolbarEl.offsetHeight, origTop + dy));
+      toolbarEl.style.position = 'fixed';
+      toolbarEl.style.left = `${newLeft}px`;
+      toolbarEl.style.top = `${newTop}px`;
+      toolbarEl.style.transform = 'none';
+      toolbarEl.style.bottom = 'auto';
+    });
+
+    document.documentElement.addEventListener('pointerup', async (e) => {
+      if (!dragging) return;
+      dragging = false;
+      handle.style.cursor = 'grab';
+      toolbarEl.style.transition = '';
+      // Persist final position
+      const pos = { left: toolbarEl.style.left, top: toolbarEl.style.top };
+      try { await chrome.storage.local.set({ sfn_toolbar_pos: pos }); } catch (err) {}
+    });
+  }
+
   // ─── Init ─────────────────────────────────────────────────────────────────
 
   const _resolvedTypes = new Map();
@@ -1285,7 +1387,24 @@
     if (!document.documentElement) return;
 
     // Render basic record toolbar
-    document.documentElement.appendChild(buildToolbar(page, null, false));
+    const toolbarRoot = buildToolbar(page, null, false);
+    document.documentElement.appendChild(toolbarRoot);
+
+    // Apply saved position + draggable setting
+    try {
+      const tbSettings = await chrome.storage.local.get(['sfn_toolbar_draggable', 'sfn_toolbar_pos']);
+      const isDraggable = tbSettings.sfn_toolbar_draggable !== false; // default ON
+      if (isDraggable) {
+        initDraggable(toolbarRoot);
+        if (tbSettings.sfn_toolbar_pos && tbSettings.sfn_toolbar_pos.left) {
+          toolbarRoot.style.position = 'fixed';
+          toolbarRoot.style.left = tbSettings.sfn_toolbar_pos.left;
+          toolbarRoot.style.top = tbSettings.sfn_toolbar_pos.top;
+          toolbarRoot.style.transform = 'none';
+          toolbarRoot.style.bottom = 'auto';
+        }
+      }
+    } catch (e) { /* storage unavailable */ }
 
     // Resolve object type if unknown
     if (page.recordId && !page.objectType) {

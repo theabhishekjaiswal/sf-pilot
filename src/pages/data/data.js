@@ -32,6 +32,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   let allFields = [];
   let pendingEdits = {}; // To store unsaved edits
   let objectPinnedFields = []; // To store pinned field API names
+  let customFieldIds = {}; // API name (lowercase) → CustomField Tooling ID (00N...)
+  let resolvedApiVer = null; // Cached API version
 
   function updateActionButtons() {
     const editCount = Object.keys(pendingEdits).length;
@@ -67,15 +69,47 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  async function loadData() {
+  async function getApiVersion() {
+    if (resolvedApiVer) return resolvedApiVer;
     try {
-      const apiVer = 'v60.0';
-      
-      // Resolve objectType if missing
-      if (!objectType) {
+      const resp = await sfFetch(`${host}/services/data/`);
+      if (Array.isArray(resp) && resp.length > 0) {
+        const raw = resp[resp.length - 1].version;
+        resolvedApiVer = raw.startsWith('v') ? raw : `v${raw}`;
+        return resolvedApiVer;
+      }
+    } catch (e) { /* fallback below */ }
+    resolvedApiVer = 'v60.0';
+    return resolvedApiVer;
+  }
+
+  async function loadData(isRefresh = false) {
+    // Guard: warn user if they have unsaved edits before refreshing
+    if (isRefresh && Object.keys(pendingEdits).length > 0) {
+      const proceed = confirm('You have unsaved edits. Refreshing will discard them. Continue?');
+      if (!proceed) return;
+    }
+
+    // Reset all mutable state to prevent stale data edge cases
+    pendingEdits = {};
+    updateActionButtons();
+    prefixCache = {};
+    nameCache = {};
+
+    // Show loading state
+    stateError.style.display = 'none';
+    table.style.display = 'none';
+    stateLoading.style.display = 'flex';
+
+    try {
+      const apiVer = await getApiVersion();
+
+      // Always re-resolve objectType from URL params on every load (never use stale cached var)
+      let currentObjectType = new URLSearchParams(window.location.search).get('objectType') || objectType;
+
+      if (!currentObjectType) {
         const prefix = recordId.substring(0, 3);
         const query = `SELECT QualifiedApiName FROM EntityDefinition WHERE KeyPrefix = '${prefix}' LIMIT 1`;
-        
         const resolveData = await new Promise((resolve, reject) => {
           chrome.runtime.sendMessage(
             { type: 'sfQuery', query: query, baseUrl: host },
@@ -86,46 +120,57 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
           );
         });
-
         if (resolveData && resolveData.records && resolveData.records.length > 0) {
-          objectType = resolveData.records[0].QualifiedApiName;
-          typeEl.textContent = objectType;
+          currentObjectType = resolveData.records[0].QualifiedApiName;
         } else {
           throw new Error('Could not resolve object type for this record ID.');
         }
       }
+      objectType = currentObjectType;
+      typeEl.textContent = objectType;
 
       const describeUrl = `${host}/services/data/${apiVer}/sobjects/${objectType}/describe`;
-      const recordUrl = `${host}/services/data/${apiVer}/sobjects/${objectType}/${recordId}`;
+      const recordUrl   = `${host}/services/data/${apiVer}/sobjects/${objectType}/${recordId}`;
+      const toolingUrl  = `${host}/services/data/${apiVer}/tooling/query?q=SELECT+Id,DeveloperName+FROM+CustomField+WHERE+TableEnumOrId='${objectType}'`;
 
-      // Fetch in parallel
-      const [describeData, recordData] = await Promise.all([
+      // Fetch describe, record data, and custom field IDs all in parallel
+      const [describeData, recordData, toolingData] = await Promise.all([
         sfFetch(describeUrl),
-        sfFetch(recordUrl)
+        sfFetch(recordUrl),
+        sfFetch(toolingUrl).catch(() => null) // Non-fatal — tooling may be unavailable
       ]);
 
       if (!describeData || !describeData.fields) {
         throw new Error('Failed to load object metadata.');
       }
 
+      // Build custom field ID map: lowercase API name → 00N... ID
+      customFieldIds = {};
+      if (toolingData && toolingData.records) {
+        for (const r of toolingData.records) {
+          // DeveloperName is without __c; reconstruct with namespace if needed
+          const fieldName = (r.DeveloperName + '__c').toLowerCase();
+          customFieldIds[fieldName] = r.Id;
+        }
+      }
+
       // Map describe metadata to record values
-      allFields = describeData.fields.map(f => {
-        return {
-          label: f.label,
-          name: f.name,
-          type: f.type,
-          value: recordData[f.name],
-          originalValue: recordData[f.name],
-          picklistValues: f.picklistValues || []
-        };
-      });
+      allFields = describeData.fields.map(f => ({
+        label: f.label,
+        name: f.name,
+        type: f.type,
+        custom: f.custom,
+        value: recordData[f.name],
+        originalValue: recordData[f.name],
+        picklistValues: f.picklistValues || []
+      }));
 
       // Load Pinned Fields from Storage
       const storageKey = `sfp_pinned_${objectType}`;
       const savedPins = await new Promise(res => chrome.storage.sync.get(storageKey, res));
       objectPinnedFields = savedPins[storageKey] || [];
 
-      // Sort alphabetically, but pinned fields bubble to top and maintain exact order
+      // Sort: pinned fields first (in their saved order), then alphabetical
       allFields.sort((a, b) => {
         const aIndex = objectPinnedFields.indexOf(a.name);
         const bIndex = objectPinnedFields.indexOf(b.name);
@@ -146,7 +191,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
 
       applyFilters();
-      
       stateLoading.style.display = 'none';
       table.style.display = 'table';
       searchInput.focus();
@@ -236,10 +280,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         rowAttrs = `class="draggable-row" data-field-name="${escapeHtml(f.name)}"`;
       }
       
+      // Build field setup URL for Classic
+      let setupUrl = null;
+      if (f.custom) {
+        const cfId = customFieldIds[f.name.toLowerCase()];
+        if (cfId) {
+          setupUrl = `${host}/p/setup/field/StandardFieldPage?id=${cfId}`;
+        } else {
+          // Fallback for namespaced or unresolved fields
+          setupUrl = `${host}/p/setup/field/StandardFieldPage?type=${encodeURIComponent(objectType)}&field=${encodeURIComponent(f.name)}`;
+        }
+      } else {
+        setupUrl = `${host}/p/setup/field/StandardFieldPage?type=${encodeURIComponent(objectType)}&field=${encodeURIComponent(f.name)}`;
+      }
+      const wrenchBtn = `<a href="${setupUrl}" target="_blank" class="field-setup-btn" title="Open field setup in Classic"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg></a>`;
+
       return `
         <tr ${rowAttrs}>
           <td class="col-label" title="${escapeHtml(f.label)}"><div style="display: flex; align-items: center; gap: 6px;">${gripIcon} ${starIcon} <span>${escapeHtml(f.label)}</span></div></td>
-          <td class="col-name">${escapeHtml(f.name)}</td>
+          <td class="col-name"><div style="display:flex;align-items:center;gap:5px;">${escapeHtml(f.name)}${wrenchBtn}</div></td>
           <td class="col-type">${getTypeIcon(f.type)} ${escapeHtml(f.type)}</td>
           <td class="${cellClasses}" data-field-name="${escapeHtml(f.name)}" data-original-value="${escapeHtml(origValStr)}" data-field-type="${escapeHtml(f.type)}">
             ${valHtml}
@@ -444,7 +503,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   btnCancel.addEventListener('click', () => {
     pendingEdits = {};
     updateActionButtons();
-    loadData(); // Reload to original state
+    loadData(); // Reload fresh data from server (no stale state)
   });
 
   btnSave.addEventListener('click', async () => {
@@ -456,7 +515,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnSave.textContent = 'Saving...';
 
     try {
-      const updateUrl = `${host}/services/data/v60.0/sobjects/${objectType}/${recordId}`;
+      const apiVer = await getApiVersion();
+      const updateUrl = `${host}/services/data/${apiVer}/sobjects/${objectType}/${recordId}`;
       await sfFetch(updateUrl, 'PATCH', pendingEdits);
       
       // Success: commit edits

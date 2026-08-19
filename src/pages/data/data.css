@@ -546,3 +546,23 @@ select.sfp-select option {
   box-shadow: 0 2px 0 #ffd43b;
 }
 
+/* Field Setup Wrench Button */
+.field-setup-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 2px 3px;
+  border-radius: 4px;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+  flex-shrink: 0;
+}
+tr:hover .field-setup-btn {
+  opacity: 1;
+}
+.field-setup-btn:hover {
+  color: var(--accent-color);
+  background: var(--accent-hover);
+}
