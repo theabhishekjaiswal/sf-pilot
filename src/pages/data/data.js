@@ -287,22 +287,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       
       // Build field setup URL for Classic
-      // For custom fields: We extracted the 00N ID from DurableId, so just append it to the base url.
-      // For standard fields: use the StandardFieldPage URL pattern
-      let setupUrl = null;
+      // Only for custom fields as requested ("Only working on custom Field, not on standard field")
+      let wrenchBtn = '';
       if (f.custom) {
         const fieldId = customFieldIds[f.name.toLowerCase()];
         if (fieldId) {
-          // fieldId is now just the 00N... ID
-          setupUrl = `${host}/${fieldId}`;
-        } else {
-          // Fallback (should rarely happen — tooling query covers all custom fields)
-          setupUrl = `${host}/p/setup/field/StandardFieldPage?type=${encodeURIComponent(objectType)}&field=${encodeURIComponent(f.name)}`;
+          const setupUrl = `${host}/${fieldId}`;
+          wrenchBtn = `<a href="${setupUrl}" target="_blank" class="field-setup-btn" title="Open field setup in Classic"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg></a>`;
         }
-      } else {
-        setupUrl = `${host}/p/setup/field/StandardFieldPage?type=${encodeURIComponent(objectType)}&field=${encodeURIComponent(f.name)}`;
       }
-      const wrenchBtn = `<a href="${setupUrl}" target="_blank" class="field-setup-btn" title="Open field setup in Classic"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg></a>`;
 
 
       return `
