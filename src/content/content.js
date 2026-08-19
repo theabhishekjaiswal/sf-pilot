@@ -849,6 +849,8 @@
         const opVal = stored.sfn_toolbar_opacity !== undefined ? stored.sfn_toolbar_opacity : 100;
         opacitySlider.value = opVal;
         opacityValue.textContent = `${opVal}%`;
+        const pct = (opVal - opacitySlider.min) / (opacitySlider.max - opacitySlider.min) * 100;
+        opacitySlider.style.background = `linear-gradient(to right, #ffd43b 0%, #ffd43b ${pct}%, rgba(255, 255, 255, 0.1) ${pct}%, rgba(255, 255, 255, 0.1) 100%)`;
         
         settingsPanel.style.display = 'block';
       }
@@ -915,6 +917,8 @@
     opacitySlider.addEventListener('input', () => {
       const val = opacitySlider.value;
       opacityValue.textContent = `${val}%`;
+      const pct = (val - opacitySlider.min) / (opacitySlider.max - opacitySlider.min) * 100;
+      opacitySlider.style.background = `linear-gradient(to right, #ffd43b 0%, #ffd43b ${pct}%, rgba(255, 255, 255, 0.1) ${pct}%, rgba(255, 255, 255, 0.1) 100%)`;
       const tb = document.getElementById(TOOLBAR_ID);
       if (tb) {
         tb.style.opacity = (val / 100).toFixed(2);
@@ -1405,8 +1409,12 @@
     // Render basic record toolbar — position BEFORE appending to avoid flash
     const toolbarRoot = buildToolbar(page, null, false);
     try {
-      const tbSettings = await chrome.storage.local.get(['sfn_toolbar_draggable', 'sfn_toolbar_pos']);
+      const tbSettings = await chrome.storage.local.get(['sfn_toolbar_draggable', 'sfn_toolbar_pos', 'sfn_toolbar_opacity']);
       const isDraggable = tbSettings.sfn_toolbar_draggable !== false;
+      const opacity = tbSettings.sfn_toolbar_opacity !== undefined ? tbSettings.sfn_toolbar_opacity : 100;
+      
+      toolbarRoot.style.opacity = (opacity / 100).toFixed(2);
+
       if (isDraggable && tbSettings.sfn_toolbar_pos && tbSettings.sfn_toolbar_pos.left) {
         // Pre-apply saved position so toolbar never flashes at top
         toolbarRoot.style.position = 'fixed';
