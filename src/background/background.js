@@ -567,7 +567,8 @@ async function handleRequest(msg, sender) {
 
   const fetchOptions = {
     method: msg.method || 'GET',
-    headers
+    headers,
+    cache: 'no-store' // Prevent browser from aggressively caching REST responses
   };
   if (msg.body) {
     headers['Content-Type'] = 'application/json';
