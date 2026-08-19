@@ -140,13 +140,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         throw new Error('Failed to load object metadata.');
       }
 
-      // Build custom field ID map: lowercase QualifiedApiName → DurableId (e.g. "Sprint_Member__c.Company__c")
-      // DurableId is used to derive the 00N field setup URL
+      // Build custom field ID map: lowercase QualifiedApiName → FieldId (00N...)
+      // DurableId is used to derive the 00N field setup URL. It comes in format "EntityId.FieldId"
       customFieldIds = {};
       if (toolingData && toolingData.records) {
         for (const r of toolingData.records) {
-          // DurableId is "ObjectName.FieldName" — we store it to build setup URL
-          customFieldIds[r.QualifiedApiName.toLowerCase()] = r.DurableId;
+          let fieldId = r.DurableId;
+          if (fieldId && fieldId.includes('.')) {
+            const parts = fieldId.split('.');
+            if (parts.length > 1) {
+              fieldId = parts[1]; // The actual 00N ID is the second part
+            }
+          }
+          customFieldIds[r.QualifiedApiName.toLowerCase()] = fieldId;
         }
       }
 
@@ -277,14 +283,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       
       // Build field setup URL for Classic
-      // For custom fields: DurableId is "ObjectName.FieldName" — Classic redirects /{DurableId} to field setup
+      // For custom fields: We extracted the 00N ID from DurableId, so just append it to the base url.
       // For standard fields: use the StandardFieldPage URL pattern
       let setupUrl = null;
       if (f.custom) {
-        const durableId = customFieldIds[f.name.toLowerCase()];
-        if (durableId) {
-          // DurableId "Sprint_Member__c.Company__c" → Classic navigates to the correct field setup page
-          setupUrl = `${host}/${durableId}`;
+        const fieldId = customFieldIds[f.name.toLowerCase()];
+        if (fieldId) {
+          // fieldId is now just the 00N... ID
+          setupUrl = `${host}/${fieldId}`;
         } else {
           // Fallback (should rarely happen — tooling query covers all custom fields)
           setupUrl = `${host}/p/setup/field/StandardFieldPage?type=${encodeURIComponent(objectType)}&field=${encodeURIComponent(f.name)}`;
