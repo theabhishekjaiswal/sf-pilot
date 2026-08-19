@@ -127,7 +127,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const recordUrl   = `${host}/services/data/${apiVer}/sobjects/${objectType}/${recordId}`;
       // Use FieldDefinition (QualifiedApiName = full API name incl. namespace + __c)
       // DurableId format is "ObjectType.FieldName" — we derive the 00N ID from EntityId
-      const toolingQuery = `SELECT QualifiedApiName,DurableId,EntityDefinition.DurableId FROM FieldDefinition WHERE EntityDefinition.QualifiedApiName='${objectType}'`;
+      const toolingQuery = `SELECT QualifiedApiName,DurableId,EntityDefinitionId FROM FieldDefinition WHERE EntityDefinition.QualifiedApiName='${objectType}'`;
       const toolingUrl  = `${host}/services/data/${apiVer}/tooling/query?q=${encodeURIComponent(toolingQuery)}`;
 
       // Fetch describe, record data, and custom field IDs all in parallel
@@ -150,8 +150,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (toolingData && toolingData.records) {
         if (toolingData.records.length > 0) {
           const firstRecord = toolingData.records[0];
-          if (firstRecord.EntityDefinition && firstRecord.EntityDefinition.DurableId) {
-            const entityDurableId = firstRecord.EntityDefinition.DurableId;
+          if (firstRecord.EntityDefinitionId) {
+            const entityDurableId = firstRecord.EntityDefinitionId;
             if (objectType.toLowerCase().endsWith('__c') || entityDurableId.startsWith('01I')) {
               const objSetupBtn = document.getElementById('sfp-object-setup-btn');
               if (objSetupBtn) {
