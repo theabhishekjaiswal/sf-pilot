@@ -127,13 +127,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       const recordUrl   = `${host}/services/data/${apiVer}/sobjects/${objectType}/${recordId}`;
       // Use FieldDefinition (QualifiedApiName = full API name incl. namespace + __c)
       // DurableId format is "ObjectType.FieldName" — we derive the 00N ID from EntityId
-      const toolingUrl  = `${host}/services/data/${apiVer}/tooling/query?q=SELECT+QualifiedApiName,DurableId+FROM+FieldDefinition+WHERE+EntityDefinition.QualifiedApiName='${objectType}'+AND+IsCustom=true`;
+      const toolingQuery = `SELECT QualifiedApiName,DurableId FROM FieldDefinition WHERE EntityDefinition.QualifiedApiName='${objectType}'`;
+      const toolingUrl  = `${host}/services/data/${apiVer}/tooling/query?q=${encodeURIComponent(toolingQuery)}`;
 
       // Fetch describe, record data, and custom field IDs all in parallel
       const [describeData, recordData, toolingData] = await Promise.all([
         sfFetch(describeUrl),
         sfFetch(recordUrl),
-        sfFetch(toolingUrl).catch(() => null) // Non-fatal — tooling may be unavailable
+        sfFetch(toolingUrl).catch(e => {
+          console.error('[SF Pilot] Tooling query failed:', e);
+          return null; // Non-fatal — tooling may be unavailable
+        })
       ]);
 
       if (!describeData || !describeData.fields) {
