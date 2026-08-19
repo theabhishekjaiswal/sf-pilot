@@ -868,7 +868,7 @@
         opacitySlider.value = opVal;
         opacityValue.textContent = `${opVal}%`;
         const pct = (opVal - opacitySlider.min) / (opacitySlider.max - opacitySlider.min) * 100;
-        opacitySlider.style.background = `linear-gradient(to right, #ffd43b 0%, #ffd43b ${pct}%, rgba(255, 255, 255, 0.1) ${pct}%, rgba(255, 255, 255, 0.1) 100%)`;
+        opacitySlider.style.background = `linear-gradient(to right, #0176d3 0%, #0176d3 ${pct}%, rgba(255, 255, 255, 0.1) ${pct}%, rgba(255, 255, 255, 0.1) 100%)`;
         
         settingsPanel.style.display = 'block';
       }
@@ -936,7 +936,7 @@
       const val = opacitySlider.value;
       opacityValue.textContent = `${val}%`;
       const pct = (val - opacitySlider.min) / (opacitySlider.max - opacitySlider.min) * 100;
-      opacitySlider.style.background = `linear-gradient(to right, #ffd43b 0%, #ffd43b ${pct}%, rgba(255, 255, 255, 0.1) ${pct}%, rgba(255, 255, 255, 0.1) 100%)`;
+      opacitySlider.style.background = `linear-gradient(to right, #0176d3 0%, #0176d3 ${pct}%, rgba(255, 255, 255, 0.1) ${pct}%, rgba(255, 255, 255, 0.1) 100%)`;
       const tb = document.getElementById(TOOLBAR_ID);
       if (tb) {
         tb.style.opacity = (val / 100).toFixed(2);

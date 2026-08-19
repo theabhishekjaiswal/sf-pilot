@@ -1071,7 +1071,7 @@
 }
 .sfp-settings-value {
   font-size: 11px;
-  color: var(--sfp-accent, #ffd43b);
+  color: var(--sfp-accent, #0176d3);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
   font-weight: 600;
 }
