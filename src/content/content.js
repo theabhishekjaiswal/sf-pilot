@@ -215,8 +215,8 @@
       if (/^(setup|lightning|apex|visualforce|servlet|secur|partners)/i.test(id)) {
         return null;
       }
-      // Skip setup/metadata ID prefixes
-      if (/^(01I|01M|01p|01q|01s|01u|0A2|0to|04G|02a)/.test(id)) {
+      // Skip setup/metadata ID prefixes (01I=CustomObject, 00N=CustomField, etc.)
+      if (/^(01I|01M|01p|01q|01s|01u|0A2|0to|04G|02a|00N)/.test(id)) {
         return null;
       }
       return {
@@ -234,7 +234,7 @@
     const idParam = searchParams.get('id') || searchParams.get('recordId') || searchParams.get('c__recordId');
     if (apexMatch && idParam && SF_ID_RE.test(idParam)) {
       // Skip metadata/setup record IDs on VF pages
-      if (/^(01I|01M|01p|01q|01s|01u|0A2|0to|04G|02a)/.test(idParam)) {
+      if (/^(01I|01M|01p|01q|01s|01u|0A2|0to|04G|02a|00N)/.test(idParam)) {
         return null;
       }
       // Look up objectType from map first, fall back to key-prefix lookup, then API resolve
@@ -249,7 +249,7 @@
 
     // 4. Generic ?id= fallback (any page with a valid SF ID, not just /apex/)
     if (idParam && SF_ID_RE.test(idParam)) {
-      if (/^(01I|01M|01p|01q|01s|01u|0A2|0to|04G|02a)/.test(idParam)) {
+      if (/^(01I|01M|01p|01q|01s|01u|0A2|0to|04G|02a|00N)/.test(idParam)) {
         return null;
       }
       return {
