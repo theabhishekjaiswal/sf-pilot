@@ -1364,21 +1364,25 @@
 
   // ─── Draggable Toolbar ────────────────────────────────────────────────────
 
+  let isGlobalDragInit = false;
+  let activeDraggableToolbar = null;
+  let dragging = false;
+  let startX, startY, origLeft, origTop;
+
   function initDraggable(toolbarEl) {
     if (toolbarEl.getAttribute('data-draggable') === 'true') return; // already init
     toolbarEl.setAttribute('data-draggable', 'true');
+    activeDraggableToolbar = toolbarEl;
 
     const handle = toolbarEl.querySelector('.sfn-logo') || toolbarEl;
     handle.style.cursor = 'grab';
-
-    let dragging = false;
-    let startX, startY, origLeft, origTop;
 
     handle.addEventListener('pointerdown', (e) => {
       // Only main button (left click)
       if (e.button !== 0) return;
       e.preventDefault();
       dragging = true;
+      activeDraggableToolbar = toolbarEl; // ensure we drag THIS toolbar instance
       const rect = toolbarEl.getBoundingClientRect();
       startX = e.clientX;
       startY = e.clientY;
@@ -1389,28 +1393,32 @@
       document.documentElement.setPointerCapture(e.pointerId);
     });
 
-    document.documentElement.addEventListener('pointermove', (e) => {
-      if (!dragging) return;
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      const newLeft = Math.max(0, Math.min(window.innerWidth - toolbarEl.offsetWidth, origLeft + dx));
-      const newTop = Math.max(0, Math.min(window.innerHeight - toolbarEl.offsetHeight, origTop + dy));
-      toolbarEl.style.position = 'fixed';
-      toolbarEl.style.left = `${newLeft}px`;
-      toolbarEl.style.top = `${newTop}px`;
-      toolbarEl.style.transform = 'none';
-      toolbarEl.style.bottom = 'auto';
-    });
+    if (!isGlobalDragInit) {
+      isGlobalDragInit = true;
+      document.documentElement.addEventListener('pointermove', (e) => {
+        if (!dragging || !activeDraggableToolbar) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        const newLeft = Math.max(0, Math.min(window.innerWidth - activeDraggableToolbar.offsetWidth, origLeft + dx));
+        const newTop = Math.max(0, Math.min(window.innerHeight - activeDraggableToolbar.offsetHeight, origTop + dy));
+        activeDraggableToolbar.style.position = 'fixed';
+        activeDraggableToolbar.style.left = `${newLeft}px`;
+        activeDraggableToolbar.style.top = `${newTop}px`;
+        activeDraggableToolbar.style.transform = 'none';
+        activeDraggableToolbar.style.bottom = 'auto';
+      });
 
-    document.documentElement.addEventListener('pointerup', async (e) => {
-      if (!dragging) return;
-      dragging = false;
-      handle.style.cursor = 'grab';
-      toolbarEl.style.transition = '';
-      // Persist final position
-      const pos = { left: toolbarEl.style.left, top: toolbarEl.style.top };
-      try { await chrome.storage.local.set({ sfn_toolbar_pos: pos }); } catch (err) {}
-    });
+      document.documentElement.addEventListener('pointerup', async (e) => {
+        if (!dragging || !activeDraggableToolbar) return;
+        dragging = false;
+        const h = activeDraggableToolbar.querySelector('.sfn-logo') || activeDraggableToolbar;
+        h.style.cursor = 'grab';
+        activeDraggableToolbar.style.transition = '';
+        // Persist final position
+        const pos = { left: activeDraggableToolbar.style.left, top: activeDraggableToolbar.style.top };
+        try { await chrome.storage.local.set({ sfn_toolbar_pos: pos }); } catch (err) {}
+      });
+    }
   }
 
   // ─── Init ─────────────────────────────────────────────────────────────────
