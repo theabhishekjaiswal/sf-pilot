@@ -86,16 +86,32 @@
 
   // ─── Domain helpers ───────────────────────────────────────────────────────
 
+  function _getEffectiveLocation() {
+    if (window.location.protocol === 'chrome-extension:') {
+      const hostUrl = new URLSearchParams(window.location.search).get('host');
+      if (hostUrl) {
+        try {
+          return new URL(hostUrl);
+        } catch (e) {
+          // If it's just a hostname string
+          return { protocol: 'https:', hostname: hostUrl.replace(/^https?:\/\//, '') };
+        }
+      }
+    }
+    return window.location;
+  }
+
   function getApiBaseUrl() {
-    return `${window.location.protocol}//${window.location.hostname}`;
+    const loc = _getEffectiveLocation();
+    return `${loc.protocol}//${loc.hostname}`;
   }
 
   function isOnLightningDomain() {
-    return window.location.hostname.includes('.lightning.force.com');
+    return _getEffectiveLocation().hostname.includes('.lightning.force.com');
   }
 
   function getClassicBase() {
-    const { protocol, hostname } = window.location;
+    const { protocol, hostname } = _getEffectiveLocation();
     let h = hostname;
     
     if (h.includes('.lightning.force.com')) {
@@ -175,7 +191,9 @@
    * Returns null if the current page is not a record page.
    */
   function parsePage() {
+    if (window.location.protocol === 'chrome-extension:') return null;
     const { pathname, searchParams } = new URL(window.location.href);
+    if (pathname.includes('/setup/') || pathname.includes('/p/setup/') || pathname.includes('/lightning/setup/')) return null;
     const onLEX = isOnLightningDomain();
 
     // 1. Lightning record:  /lightning/r/{ObjectApiName}/{RecordId}/...
