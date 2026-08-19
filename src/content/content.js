@@ -1481,10 +1481,12 @@
           el.style.transform = 'none';
           el.style.bottom = 'auto';
         }
-        document.documentElement.appendChild(el);
+        if (!el.parentNode) {
+          document.documentElement.appendChild(el);
+        }
         if (isDraggable) initDraggable(el);
       } catch (e) {
-        document.documentElement.appendChild(el); // fallback
+        if (!el.parentNode) document.documentElement.appendChild(el); // fallback
       }
     }
 
@@ -1508,19 +1510,25 @@
     if (page.objectType === APP_OBJECT) {
       const existing = document.getElementById(TOOLBAR_ID);
       if (!existing || location.href !== lastUrl) return;
-      existing.remove();
       
       const loadingEl = buildToolbar(page, null, true);
-      await applyToolbarSettings(loadingEl);
+      loadingEl.firstChild.style.animation = 'none'; // prevent re-animation flicker
+      existing.replaceChild(loadingEl.firstChild, existing.firstChild);
+      
+      existing.removeAttribute('data-draggable'); // allow re-attaching handle listener
+      await applyToolbarSettings(existing);
 
       const appData = await fetchAppData(page.recordId);
 
-      const prev = document.getElementById(TOOLBAR_ID);
-      if (!prev || location.href !== lastUrl) return;
-      prev.remove();
+      const current = document.getElementById(TOOLBAR_ID);
+      if (!current || location.href !== lastUrl) return;
       
       const finalEl = buildToolbar(page, appData, false);
-      await applyToolbarSettings(finalEl);
+      finalEl.firstChild.style.animation = 'none'; // prevent re-animation flicker
+      current.replaceChild(finalEl.firstChild, current.firstChild);
+      
+      current.removeAttribute('data-draggable'); // allow re-attaching handle listener
+      await applyToolbarSettings(current);
     }
   }
 
