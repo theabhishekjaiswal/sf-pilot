@@ -84,13 +84,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   async function loadData(isRefresh = false) {
-    // Guard: warn user if they have unsaved edits before refreshing
-    if (isRefresh && Object.keys(pendingEdits).length > 0) {
-      const proceed = confirm('You have unsaved edits. Refreshing will discard them. Continue?');
-      if (!proceed) return;
-    }
-
-    // Reset all mutable state to prevent stale data edge cases
+    // Always silently drop any pending edits on refresh — no stale saves possible
     pendingEdits = {};
     updateActionButtons();
     prefixCache = {};
@@ -131,7 +125,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       const describeUrl = `${host}/services/data/${apiVer}/sobjects/${objectType}/describe`;
       const recordUrl   = `${host}/services/data/${apiVer}/sobjects/${objectType}/${recordId}`;
-      const toolingUrl  = `${host}/services/data/${apiVer}/tooling/query?q=SELECT+Id,DeveloperName+FROM+CustomField+WHERE+TableEnumOrId='${objectType}'`;
+      // Use FieldDefinition (QualifiedApiName = full API name incl. namespace + __c)
+      // DurableId format is "ObjectType.FieldName" — we derive the 00N ID from EntityId
+      const toolingUrl  = `${host}/services/data/${apiVer}/tooling/query?q=SELECT+QualifiedApiName,DurableId+FROM+FieldDefinition+WHERE+EntityDefinition.QualifiedApiName='${objectType}'+AND+IsCustom=true`;
 
       // Fetch describe, record data, and custom field IDs all in parallel
       const [describeData, recordData, toolingData] = await Promise.all([
@@ -144,13 +140,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         throw new Error('Failed to load object metadata.');
       }
 
-      // Build custom field ID map: lowercase API name → 00N... ID
+      // Build custom field ID map: lowercase QualifiedApiName → DurableId (e.g. "Sprint_Member__c.Company__c")
+      // DurableId is used to derive the 00N field setup URL
       customFieldIds = {};
       if (toolingData && toolingData.records) {
         for (const r of toolingData.records) {
-          // DeveloperName is without __c; reconstruct with namespace if needed
-          const fieldName = (r.DeveloperName + '__c').toLowerCase();
-          customFieldIds[fieldName] = r.Id;
+          // DurableId is "ObjectName.FieldName" — we store it to build setup URL
+          customFieldIds[r.QualifiedApiName.toLowerCase()] = r.DurableId;
         }
       }
 
@@ -281,19 +277,23 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       
       // Build field setup URL for Classic
+      // For custom fields: DurableId is "ObjectName.FieldName" — Classic redirects /{DurableId} to field setup
+      // For standard fields: use the StandardFieldPage URL pattern
       let setupUrl = null;
       if (f.custom) {
-        const cfId = customFieldIds[f.name.toLowerCase()];
-        if (cfId) {
-          setupUrl = `${host}/p/setup/field/StandardFieldPage?id=${cfId}`;
+        const durableId = customFieldIds[f.name.toLowerCase()];
+        if (durableId) {
+          // DurableId "Sprint_Member__c.Company__c" → Classic navigates to the correct field setup page
+          setupUrl = `${host}/${durableId}`;
         } else {
-          // Fallback for namespaced or unresolved fields
+          // Fallback (should rarely happen — tooling query covers all custom fields)
           setupUrl = `${host}/p/setup/field/StandardFieldPage?type=${encodeURIComponent(objectType)}&field=${encodeURIComponent(f.name)}`;
         }
       } else {
         setupUrl = `${host}/p/setup/field/StandardFieldPage?type=${encodeURIComponent(objectType)}&field=${encodeURIComponent(f.name)}`;
       }
       const wrenchBtn = `<a href="${setupUrl}" target="_blank" class="field-setup-btn" title="Open field setup in Classic"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg></a>`;
+
 
       return `
         <tr ${rowAttrs}>

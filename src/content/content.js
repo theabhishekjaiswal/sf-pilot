@@ -45,6 +45,9 @@
     }
   }
 
+  // ─── Guard: skip Flow Builder (no record context, metadata search still works) ─
+  const isFlowBuilder = window.location.pathname.startsWith('/builder_platform_interaction/');
+
   // ─── Constants ────────────────────────────────────────────────────────────
 
   const APP_OBJECT = 'genesis__Applications__c';
@@ -765,10 +768,6 @@
                 <span class="sfp-toggle-slider"></span>
               </label>
             </div>
-            <div class="sfp-settings-row" id="sfp-reset-pos-row">
-              <span class="sfp-settings-label" style="color: var(--sfp-muted);">Position</span>
-              <button class="sfp-settings-action-btn" id="sfp-reset-pos-btn">Reset Position</button>
-            </div>
           </div>
         </div>
         <div class="sfp-search-footer">
@@ -788,10 +787,14 @@
     });
 
     // Start silent preloading of metadata to ensure instant search launch
+    // Reset promise to null on failure so the next open can retry cleanly
     if (objectsList.length === 0 && !preloadedObjectsPromise) {
       preloadedObjectsPromise = getObjectsList().then(list => {
         objectsList = [...SHORTCUTS, ...list];
-      }).catch(e => console.warn('[SF Pilot] Preload failed:', e));
+      }).catch(e => {
+        console.warn('[SF Pilot] Preload failed:', e);
+        preloadedObjectsPromise = null; // Allow retry on next modal open
+      });
     }
 
     const input = modal.querySelector('.sfp-search-input');
@@ -809,8 +812,6 @@
     const settingsPanel = modal.querySelector('#sfp-settings-panel');
     const navbarToggle = modal.querySelector('#sfp-toggle-navbar');
     const draggableToggle = modal.querySelector('#sfp-toggle-draggable');
-    const resetPosBtn = modal.querySelector('#sfp-reset-pos-btn');
-    const resetPosRow = modal.querySelector('#sfp-reset-pos-row');
     const settingsCloseBtn = modal.querySelector('#sfp-settings-close');
 
     // Auto-close settings panel when clicking anywhere outside it
@@ -835,7 +836,6 @@
         const stored = await chrome.storage.local.get(['sfn_toolbar_enabled', 'sfn_toolbar_draggable']);
         navbarToggle.checked = stored.sfn_toolbar_enabled !== false;
         draggableToggle.checked = stored.sfn_toolbar_draggable !== false;
-        resetPosRow.style.display = draggableToggle.checked ? 'flex' : 'none';
         settingsPanel.style.display = 'block';
       }
     });
@@ -884,13 +884,11 @@
 
     draggableToggle.addEventListener('change', async () => {
       await chrome.storage.local.set({ sfn_toolbar_draggable: draggableToggle.checked });
-      resetPosRow.style.display = draggableToggle.checked ? 'flex' : 'none';
       const tb = document.getElementById(TOOLBAR_ID);
       if (tb) {
         if (draggableToggle.checked) {
           initDraggable(tb);
         } else {
-          // Snap to default position
           tb.style.top = '';
           tb.style.left = '';
           tb.style.transform = '';
@@ -898,18 +896,6 @@
           tb.removeAttribute('data-draggable');
         }
       }
-    });
-
-    resetPosBtn.addEventListener('click', async () => {
-      await chrome.storage.local.remove('sfn_toolbar_pos');
-      const tb = document.getElementById(TOOLBAR_ID);
-      if (tb) {
-        tb.style.top = '';
-        tb.style.left = '';
-        tb.style.transform = '';
-        tb.style.bottom = '';
-      }
-      settingsPanel.style.display = 'none';
     });
 
     document.documentElement.appendChild(modal);
@@ -1386,25 +1372,27 @@
     if (document.getElementById(TOOLBAR_ID)) return;
     if (!document.documentElement) return;
 
-    // Render basic record toolbar
-    const toolbarRoot = buildToolbar(page, null, false);
-    document.documentElement.appendChild(toolbarRoot);
+    // Skip toolbar on Flow Builder (no record context there)
+    if (isFlowBuilder) return;
 
-    // Apply saved position + draggable setting
+    // Render basic record toolbar — position BEFORE appending to avoid flash
+    const toolbarRoot = buildToolbar(page, null, false);
     try {
       const tbSettings = await chrome.storage.local.get(['sfn_toolbar_draggable', 'sfn_toolbar_pos']);
-      const isDraggable = tbSettings.sfn_toolbar_draggable !== false; // default ON
-      if (isDraggable) {
-        initDraggable(toolbarRoot);
-        if (tbSettings.sfn_toolbar_pos && tbSettings.sfn_toolbar_pos.left) {
-          toolbarRoot.style.position = 'fixed';
-          toolbarRoot.style.left = tbSettings.sfn_toolbar_pos.left;
-          toolbarRoot.style.top = tbSettings.sfn_toolbar_pos.top;
-          toolbarRoot.style.transform = 'none';
-          toolbarRoot.style.bottom = 'auto';
-        }
+      const isDraggable = tbSettings.sfn_toolbar_draggable !== false;
+      if (isDraggable && tbSettings.sfn_toolbar_pos && tbSettings.sfn_toolbar_pos.left) {
+        // Pre-apply saved position so toolbar never flashes at top
+        toolbarRoot.style.position = 'fixed';
+        toolbarRoot.style.left = tbSettings.sfn_toolbar_pos.left;
+        toolbarRoot.style.top = tbSettings.sfn_toolbar_pos.top;
+        toolbarRoot.style.transform = 'none';
+        toolbarRoot.style.bottom = 'auto';
       }
-    } catch (e) { /* storage unavailable */ }
+      document.documentElement.appendChild(toolbarRoot);
+      if (isDraggable) initDraggable(toolbarRoot);
+    } catch (e) {
+      document.documentElement.appendChild(toolbarRoot); // fallback
+    }
 
     // Resolve object type if unknown
     if (page.recordId && !page.objectType) {
