@@ -117,7 +117,7 @@ async function handleGetObjects(msg, sender) {
   const toolingPromise = (async () => {
     try {
       const customQueryUrl = `${apiBase}/services/data/${ver}/tooling/query?q=SELECT+Id,DeveloperName,NamespacePrefix+FROM+CustomObject`;
-      const qResp = await fetch(customQueryUrl, { headers, signal: controller.signal });
+      const qResp = await fetch(customQueryUrl, { headers, signal: controller.signal, cache: 'no-store' });
       if (qResp.ok) {
         const qData = await qResp.json();
         if (qData && Array.isArray(qData.records)) {
@@ -141,7 +141,7 @@ async function handleGetObjects(msg, sender) {
   // 2. Fetch sObjects list (Parallel)
   const sobjectsPromise = (async () => {
     const url = `${apiBase}/services/data/${ver}/sobjects`;
-    const resp = await fetch(url, { headers, signal: controller.signal });
+    const resp = await fetch(url, { headers, signal: controller.signal, cache: 'no-store' });
     if (!resp.ok) {
       throw new Error(`Failed to fetch objects: HTTP ${resp.status}`);
     }
@@ -152,7 +152,7 @@ async function handleGetObjects(msg, sender) {
   const classesPromise = (async () => {
     try {
       const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexClass+WHERE+NamespacePrefix=null`;
-      const resp = await fetch(qUrl, { headers, signal: controller.signal });
+      const resp = await fetch(qUrl, { headers, signal: controller.signal, cache: 'no-store' });
       if (resp.ok) {
         const d = await resp.json();
         return (d.records || []).map(r => ({ label: r.Name, name: r.Name, type: 'Class', setupId: r.Id }));
@@ -167,7 +167,7 @@ async function handleGetObjects(msg, sender) {
   const triggersPromise = (async () => {
     try {
       const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexTrigger+WHERE+NamespacePrefix=null`;
-      const resp = await fetch(qUrl, { headers, signal: controller.signal });
+      const resp = await fetch(qUrl, { headers, signal: controller.signal, cache: 'no-store' });
       if (resp.ok) {
         const d = await resp.json();
         return (d.records || []).map(r => ({ label: r.Name, name: r.Name, type: 'Trigger', setupId: r.Id }));
@@ -182,7 +182,7 @@ async function handleGetObjects(msg, sender) {
   const pagesPromise = (async () => {
     try {
       const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexPage+WHERE+NamespacePrefix=null`;
-      const resp = await fetch(qUrl, { headers, signal: controller.signal });
+      const resp = await fetch(qUrl, { headers, signal: controller.signal, cache: 'no-store' });
       if (resp.ok) {
         const d = await resp.json();
         return (d.records || []).map(r => ({ label: r.Name, name: r.Name, type: 'Page', setupId: r.Id }));
@@ -197,7 +197,7 @@ async function handleGetObjects(msg, sender) {
   const labelsPromise = (async () => {
     try {
       const qUrl = `${apiBase}/services/data/${ver}/tooling/query?q=SELECT+Id,Name,MasterLabel+FROM+ExternalString+WHERE+NamespacePrefix=null`;
-      const resp = await fetch(qUrl, { headers, signal: controller.signal });
+      const resp = await fetch(qUrl, { headers, signal: controller.signal, cache: 'no-store' });
       if (resp.ok) {
         const d = await resp.json();
         return (d.records || []).map(r => ({
@@ -217,7 +217,7 @@ async function handleGetObjects(msg, sender) {
   const flowsPromise = (async () => {
     try {
       const qUrl = `${apiBase}/services/data/${ver}/tooling/query?q=SELECT+Id,DeveloperName,MasterLabel+FROM+FlowDefinition+WHERE+NamespacePrefix=null`;
-      const resp = await fetch(qUrl, { headers, signal: controller.signal });
+      const resp = await fetch(qUrl, { headers, signal: controller.signal, cache: 'no-store' });
       if (resp.ok) {
         const d = await resp.json();
         return (d.records || []).map(r => ({
@@ -237,7 +237,7 @@ async function handleGetObjects(msg, sender) {
   const tabsPromise = (async () => {
     try {
       const qUrl = `${apiBase}/services/data/${ver}/tabs`;
-      const resp = await fetch(qUrl, { headers, signal: controller.signal });
+      const resp = await fetch(qUrl, { headers, signal: controller.signal, cache: 'no-store' });
       if (resp.ok) {
         const tabsArr = await resp.json();
         const customTabs = [];
@@ -267,7 +267,7 @@ async function handleGetObjects(msg, sender) {
   const settingsPromise = (async () => {
     try {
       const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+DurableId,QualifiedApiName,Label+FROM+EntityDefinition+WHERE+IsCustomSetting=true+AND+NamespacePrefix=null`;
-      const resp = await fetch(qUrl, { headers, signal: controller.signal });
+      const resp = await fetch(qUrl, { headers, signal: controller.signal, cache: 'no-store' });
       if (resp.ok) {
         const d = await resp.json();
         return (d.records || []).map(r => ({
@@ -287,7 +287,7 @@ async function handleGetObjects(msg, sender) {
   const profilesPromise = (async () => {
     try {
       const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+Profile`;
-      const resp = await fetch(qUrl, { headers, signal: controller.signal });
+      const resp = await fetch(qUrl, { headers, signal: controller.signal, cache: 'no-store' });
       if (resp.ok) {
         const d = await resp.json();
         return (d.records || []).map(r => ({
@@ -307,7 +307,7 @@ async function handleGetObjects(msg, sender) {
   const permissionSetsPromise = (async () => {
     try {
       const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name,Label+FROM+PermissionSet+WHERE+IsOwnedByProfile=false`;
-      const resp = await fetch(qUrl, { headers, signal: controller.signal });
+      const resp = await fetch(qUrl, { headers, signal: controller.signal, cache: 'no-store' });
       if (resp.ok) {
         const d = await resp.json();
         return (d.records || []).map(r => ({
@@ -327,7 +327,7 @@ async function handleGetObjects(msg, sender) {
   const staticResourcesPromise = (async () => {
     try {
       const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+StaticResource+WHERE+NamespacePrefix=null`;
-      const resp = await fetch(qUrl, { headers, signal: controller.signal });
+      const resp = await fetch(qUrl, { headers, signal: controller.signal, cache: 'no-store' });
       if (resp.ok) {
         const d = await resp.json();
         return (d.records || []).map(r => ({
@@ -347,7 +347,7 @@ async function handleGetObjects(msg, sender) {
   const usersPromise = (async () => {
     try {
       const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name,Username+FROM+User+WHERE+IsActive=true+AND+Profile.UserLicense.Name='Salesforce'`;
-      const resp = await fetch(qUrl, { headers, signal: controller.signal });
+      const resp = await fetch(qUrl, { headers, signal: controller.signal, cache: 'no-store' });
       if (resp.ok) {
         const d = await resp.json();
         return (d.records || []).map(r => ({
